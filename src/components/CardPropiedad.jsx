@@ -1,97 +1,110 @@
 import React, { useState } from 'react';
-import { Home, MapPin, Bed, Bath, Trash2, Share2, MessageCircle, PlayCircle, Calculator, Info, UserCheck, Percent } from 'lucide-react';
+import { MessageCircle, MapPin, User, CheckCircle, Info, Home, Map } from 'lucide-react';
+import { propiedadesService } from '../propiedadesService';
 
-export const CardPropiedad = ({ casa, alEliminar, alCompartir, rolUsuario }) => {
-  const [verCalculadora, setVerCalculadora] = useState(false);
+function CardPropiedad({ propiedad, usuarioActual, alActualizar }) {
+  const [expandido, setExpandido] = useState(false);
+  const esPropietario = usuarioActual?.id === propiedad.agente_id;
+  const vendido = propiedad.estado === 'vendido' || propiedad.estado === 'alquilado';
 
-  const calcularCuota = () => {
-    const monto = casa.precio * 0.8;
-    const interesMensual = (0.05 / 12);
-    const meses = 20 * 12;
-    const cuota = (monto * interesMensual) / (1 - Math.pow(1 + interesMensual, -meses));
-    return Math.round(cuota);
+  const mensajeWA = `Hola, solicito información de: ${propiedad.titulo} (${propiedad.zona})`;
+  const urlWA = `https://wa.me/${propiedad.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(mensajeWA)}`;
+
+  const cerrarOperacion = async () => {
+    if (!window.confirm("¿Confirmar cierre de operación?")) return;
+    
+    const precioFinal = prompt("Precio final de cierre:", propiedad.precio);
+    if (!precioFinal) return;
+    
+    const agenteCierre = prompt("Nombre del Agente que cerró (o Inmobiliaria):", usuarioActual?.user_metadata?.nombre || "Yo");
+    
+    try {
+      await propiedadesService.actualizar(propiedad.id, {
+        estado: propiedad.tipo_operacion === 'Alquiler' ? 'alquilado' : 'vendido',
+        precio_cierre: precioFinal,
+        fecha_cierre: new Date().toISOString(),
+        agente_cierre: agenteCierre
+      });
+      alert("¡Felicidades! Operación registrada.");
+      alActualizar && alActualizar();
+    } catch (e) {
+      alert("Error al cerrar: " + e.message);
+    }
   };
 
   return (
-    <div className="bg-white rounded-[45px] overflow-hidden shadow-2xl border border-slate-100 mb-8 animate-in fade-in zoom-in duration-500">
-      {/* HEADER IMAGEN */}
-      <div className="h-64 bg-slate-200 relative">
-        <img src={casa.imagen_url} className="w-full h-full object-cover" alt={casa.titulo} />
+    <div className={`w-full max-w-[240px] bg-white rounded-[30px] overflow-hidden shadow-xl border border-slate-100 flex flex-col transition-all duration-300 ${vendido ? 'opacity-75 grayscale-[0.5]' : ''}`}>
+      <div className="h-40 bg-slate-200 relative">
+        <img src={propiedad.imagen_url || 'https://via.placeholder.com/300'} className="w-full h-full object-cover" alt="Propiedad" />
         
-        {/* ETIQUETA DE COMISIÓN (Sello MLS) */}
-        <div className="absolute top-6 left-6 bg-yellow-400 text-slate-900 font-black px-4 py-2 rounded-full flex items-center gap-1 shadow-lg text-[10px] italic">
-          <Percent size={14} /> {casa.comision || '5'}% COMPARTIDO
+        {/* Badges Superiores */}
+        <div className="absolute top-3 left-3 flex flex-col gap-1">
+            <span className={`text-[10px] font-black px-2 py-1 rounded-lg shadow-sm w-max ${propiedad.tipo_operacion === 'Alquiler' ? 'bg-purple-500 text-white' : 'bg-blue-600 text-white'}`}>
+                {propiedad.tipo_operacion?.toUpperCase() || 'VENTA'}
+            </span>
+             <span className="bg-white/90 backdrop-blur-sm text-slate-700 text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1 shadow-sm w-max">
+                <Home size={10} /> {propiedad.tipo_inmueble || 'Inmueble'}
+            </span>
         </div>
 
-        {rolUsuario === 'Jefe' && (
-          <button onClick={() => alEliminar(casa.id)} className="absolute top-6 right-6 bg-red-500 text-white p-2.5 rounded-full shadow-xl">
-            <Trash2 size={18} />
-          </button>
+        {vendido && (
+             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white p-4 text-center backdrop-blur-[2px]">
+                <CheckCircle size={32} className="mb-1 text-green-400" />
+                <span className="text-lg font-black uppercase tracking-widest">{propiedad.estado}</span>
+                <span className="text-[10px] mt-1 font-medium">por {propiedad.agente_cierre}</span>
+                <span className="text-[10px] font-bold text-green-300">${Number(propiedad.precio_cierre).toLocaleString()}</span>
+             </div>
+        )}
+      </div>
+      
+      <div className="p-4 flex flex-col gap-2">
+        <div>
+            <h3 className="text-slate-800 font-bold text-sm leading-tight truncate">{propiedad.titulo}</h3>
+            <p className="text-xs text-slate-500 flex items-center gap-1 mt-1"><MapPin size={10} /> {propiedad.zona}</p>
+        </div>
+
+        <div className="flex items-baseline gap-1">
+            <span className="text-lg font-black text-[#0056b3]">${Number(propiedad.precio).toLocaleString()}</span>
+            {propiedad.tipo_operacion === 'Alquiler' && <span className="text-xs text-slate-400">/mes</span>}
+        </div>
+        
+        <div className="flex justify-between text-[10px] text-slate-500 font-medium border-t border-slate-100 pt-2">
+          <span>{propiedad.habitaciones} Habs</span>
+          <span>{propiedad.banos} Baños</span>
+          <span>{propiedad.metraje} m²</span>
+        </div>
+
+        {expandido && (
+            <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl mt-1 leading-relaxed">
+                {propiedad.descripcion || "Sin descripción detallada."}
+                <div className="mt-2 pt-2 border-t border-slate-200 flex flex-col gap-1 text-[10px] text-slate-400">
+                    <span className="flex items-center gap-1"><User size={10} /> Captado por: {propiedad.agente_nombre}</span>
+                    {propiedad.mapa_url && (
+                        <a href={propiedad.mapa_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-500 hover:underline">
+                            <Map size={10} /> Ver Ubicación en Mapa
+                        </a>
+                    )}
+                </div>
+            </div>
         )}
 
-        <div className="absolute bottom-6 right-6 bg-white/95 backdrop-blur px-6 py-3 rounded-2xl shadow-2xl text-[#0056b3] font-black text-2xl italic">
-          ${casa.precio?.toLocaleString()}
-        </div>
-      </div>
-
-      <div className="p-8">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800 italic uppercase tracking-tighter leading-tight">{casa.titulo}</h3>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="bg-blue-50 text-[#0056b3] p-1.5 rounded-lg"><UserCheck size={14}/></div>
-              <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Captador: {casa.agente_nombre || 'Nexus Real'}</p>
-            </div>
-          </div>
-          <button onClick={() => alCompartir(casa)} className="bg-slate-100 p-3 rounded-2xl text-slate-600 active:scale-90 transition-all">
-            <Share2 size={20} />
-          </button>
+        <div className="mt-2 flex gap-2">
+            <a href={urlWA} target="_blank" rel="noreferrer" className="flex-1 bg-green-500 hover:bg-green-600 text-white text-[10px] font-bold py-2.5 rounded-xl flex items-center justify-center gap-1 transition-colors shadow-sm">
+            <MessageCircle size={14} /> Contactar
+            </a>
+            <button onClick={() => setExpandido(!expandido)} className="w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors">
+                <Info size={16} />
+            </button>
         </div>
 
-        {/* DATOS TÉCNICOS */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          <div className="bg-slate-50 p-4 rounded-3xl text-center border border-slate-100">
-            <Bed className="mx-auto mb-1 text-[#0056b3]" size={18} />
-            <p className="text-[9px] font-black text-slate-400 uppercase">Habitaciones</p>
-            <p className="font-bold text-slate-800">{casa.habitaciones}</p>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-3xl text-center border border-slate-100">
-            <Bath className="mx-auto mb-1 text-[#0056b3]" size={18} />
-            <p className="text-[9px] font-black text-slate-400 uppercase">Baños</p>
-            <p className="font-bold text-slate-800">{casa.banos}</p>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-3xl text-center border border-slate-100">
-            <Info className="mx-auto mb-1 text-[#0056b3]" size={18} />
-            <p className="text-[9px] font-black text-slate-400 uppercase">Certificado</p>
-            <p className="font-bold text-slate-800">{casa.eficiencia || 'A+'}</p>
-          </div>
-        </div>
-
-        {/* ACCIONES */}
-        <div className="space-y-4">
-          <button 
-            onClick={() => setVerCalculadora(!verCalculadora)}
-            className="w-full bg-slate-800 text-white py-4 rounded-[22px] font-black text-xs flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all"
-          >
-            <Calculator size={18} /> {verCalculadora ? 'OCULTAR CALCULADORA' : 'PLAN DE FINANCIAMIENTO'}
-          </button>
-
-          {verCalculadora && (
-            <div className="bg-blue-50 p-6 rounded-[30px] border-2 border-dashed border-blue-200 animate-in slide-in-from-top-4">
-              <p className="text-[10px] font-black text-[#0056b3] uppercase mb-1 text-center italic tracking-widest">Estimación Bancaria</p>
-              <p className="text-3xl font-black text-center text-slate-800">${calcularCuota().toLocaleString()}<span className="text-xs font-normal opacity-50">/mes</span></p>
-            </div>
-          )}
-
-          <a 
-            href={`https://wa.me/${casa.whatsapp}`} 
-            target="_blank" rel="noreferrer"
-            className="flex items-center justify-center gap-3 w-full bg-green-500 text-white py-5 rounded-[22px] font-black shadow-lg hover:bg-green-600 transition-all active:scale-95"
-          >
-            <MessageCircle size={24} /> CONTACTAR AL AGENTE
-          </a>
-        </div>
+        {esPropietario && !vendido && (
+             <button onClick={cerrarOperacion} className="w-full mt-1 border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 text-[10px] font-bold py-2 rounded-xl transition-all">
+                Cerrar Operación
+            </button>
+        )}
       </div>
     </div>
   );
-};
+}
+
+export default CardPropiedad;

@@ -1,58 +1,36 @@
 import React, { useState } from 'react';
-import { Lock, Mail, Loader2, ChevronLeft } from 'lucide-react';
+import { supabase } from '../supabase';
 
-export const Login = ({ alLoguear, alCancelar }) => {
+function Login() {
   const [email, setEmail] = useState('');
-  const [pass, setPass] = useState('');
-  const [cargando, setCargando] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setCargando(true);
-    try {
-      await alLoguear(email, pass);
-    } catch (err) {
-      alert("Acceso denegado: Revisa tus credenciales");
-    }
-    setCargando(false);
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) alert("Error: " + error.message);
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-6 animate-in fade-in duration-500">
-      <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl p-10 border border-slate-200 relative">
-        <button onClick={alCancelar} className="absolute top-6 left-6 text-slate-400 hover:text-[#0056b3] transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-        
-        <div className="text-center mb-8 mt-4">
-          <div className="bg-[#0056b3] w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <Lock className="text-white" size={32} />
-          </div>
-          <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Admin Nexus</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-900 p-4">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8">
+        <div className="text-center mb-10">
+          <h2 className="text-4xl font-black text-gray-900">NEXUS REAL</h2>
+          <p className="text-gray-500 mt-2">Acceso exclusivo para la Jefa</p>
         </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-            <Mail className="absolute left-4 top-4 text-slate-400" size={20} />
-            <input 
-              type="email" placeholder="Correo de administrador" 
-              className="w-full p-4 pl-12 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-[#0056b3]"
-              value={email} onChange={e => setEmail(e.target.value)} required
-            />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-4 top-4 text-slate-400" size={20} />
-            <input 
-              type="password" placeholder="Contraseña" 
-              className="w-full p-4 pl-12 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-[#0056b3]"
-              value={pass} onChange={e => setPass(e.target.value)} required
-            />
-          </div>
-          <button disabled={cargando} className="w-full bg-[#0056b3] text-white font-black py-5 rounded-2xl shadow-xl hover:bg-blue-700 flex items-center justify-center gap-2">
-            {cargando ? <Loader2 className="animate-spin" /> : 'INICIAR SESIÓN'}
+        <form onSubmit={handleLogin} className="space-y-6">
+          <input type="email" required className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Correo" onChange={(e) => setEmail(e.target.value)} />
+          <input type="password" required className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Contraseña" onChange={(e) => setPassword(e.target.value)} />
+          <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+            {loading ? 'Cargando...' : 'Iniciar Sesión'}
           </button>
         </form>
       </div>
     </div>
   );
-};
+}
+
+export default Login;
