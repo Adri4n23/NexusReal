@@ -33,7 +33,7 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar }) {
   };
 
   return (
-    <div className={`w-full max-w-[240px] bg-white rounded-[30px] overflow-hidden shadow-xl border border-slate-100 flex flex-col transition-all duration-300 ${vendido ? 'opacity-75 grayscale-[0.5]' : ''}`}>
+    <div className={`w-full md:max-w-[240px] bg-white rounded-[30px] overflow-hidden shadow-xl border border-slate-100 flex flex-col transition-all duration-300 ${vendido ? 'opacity-75 grayscale-[0.5]' : ''}`}>
       <div className="h-40 bg-slate-200 relative">
         <img src={propiedad.imagen_url || 'https://via.placeholder.com/300'} className="w-full h-full object-cover" alt="Propiedad" />
         
@@ -92,6 +92,9 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar }) {
             <a href={urlWA} target="_blank" rel="noreferrer" className="flex-1 bg-green-500 hover:bg-green-600 text-white text-[10px] font-bold py-2.5 rounded-xl flex items-center justify-center gap-1 transition-colors shadow-sm">
             <MessageCircle size={14} /> Contactar
             </a>
+            <button onClick={compartirFicha} className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100">
+                <Share2 size={16} />
+            </button>
             <button onClick={() => setExpandido(!expandido)} className="w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors">
                 <Info size={16} />
             </button>

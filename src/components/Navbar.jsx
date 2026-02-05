@@ -4,7 +4,7 @@ import { Search, LogOut, Building2 } from 'lucide-react';
 
 function Navbar({ alBuscar, usuario }) {
   return (
-    <nav className="bg-slate-900 pt-6 pb-16 px-6 rounded-b-[45px] shadow-2xl text-white relative overflow-hidden">
+    <nav className="bg-slate-900 pt-4 pb-8 md:pt-6 md:pb-16 px-6 rounded-b-[45px] shadow-2xl text-white relative overflow-hidden">
       {/* Fondo decorativo */}
       <div className="absolute top-0 right-0 w-64 h-64 bg-[#0056b3] rounded-full blur-[100px] opacity-20 -mr-20 -mt-20"></div>
 

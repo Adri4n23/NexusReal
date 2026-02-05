@@ -39,23 +39,53 @@ export const Formulario = ({ usuario, alTerminar }) => {
   };
 
   return (
-    <form onSubmit={enviar} className="bg-white p-8 rounded-[40px] shadow-2xl mb-10 border border-slate-100">
+    <form onSubmit={enviar} className="bg-white p-6 md:p-8 rounded-[40px] shadow-2xl mb-10 border border-slate-100">
       <h2 className="text-xl font-black text-slate-800 mb-6 uppercase italic">REGISTRO MLS</h2>
       
-      <div className="space-y-4">
-        <div className="relative w-full h-48 bg-slate-50 rounded-[30px] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden">
+      {/* BOTÓN MÁGICO DE IMPORTACIÓN */}
+      <div className="mb-6">
+        <button 
+            type="button"
+            onClick={() => setMostrarImportador(!mostrarImportador)}
+            className="w-full bg-green-50 text-green-700 border border-green-200 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-green-100 transition-colors"
+        >
+            <Wand2 size={20} />
+            {mostrarImportador ? 'Ocultar Importador' : '¿Copiar desde WhatsApp?'}
+        </button>
+
+        {mostrarImportador && (
+            <div className="mt-4 animate-in slide-in-from-top-2">
+                <textarea 
+                    className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-green-100 outline-none text-xs"
+                    rows="5"
+                    placeholder="Pega aquí el mensaje completo de WhatsApp con la descripción de la casa..."
+                    value={textoWA}
+                    onChange={(e) => setTextoWA(e.target.value)}
+                ></textarea>
+                <button 
+                    type="button"
+                    onClick={importarDesdeWA}
+                    className="w-full mt-2 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-colors"
+                >
+                    ✨ Extraer Datos Automáticamente
+                </button>
+            </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="relative w-full h-48 bg-slate-50 rounded-[30px] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center overflow-hidden md:col-span-2">
           {foto ? <img src={URL.createObjectURL(foto)} className="w-full h-full object-cover" alt="Preview" /> : <Camera className="text-slate-300" size={40} />}
           <input type="file" accept="image/*" onChange={(e) => setFoto(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
         </div>
 
-        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Nombre de la propiedad" onChange={e => setDatos({...datos, titulo: e.target.value})} value={datos.titulo} required />
+        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none md:col-span-2" placeholder="Nombre de la propiedad" onChange={e => setDatos({...datos, titulo: e.target.value})} value={datos.titulo} required />
         
-        <div className="flex gap-2">
-          <select className="w-1/2 p-4 bg-slate-50 rounded-2xl outline-none text-slate-600" value={datos.tipo_operacion} onChange={e => setDatos({...datos, tipo_operacion: e.target.value})}>
+        <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-slate-600" value={datos.tipo_operacion} onChange={e => setDatos({...datos, tipo_operacion: e.target.value})}>
             <option value="Venta">Venta</option>
             <option value="Alquiler">Alquiler</option>
-          </select>
-          <select className="w-1/2 p-4 bg-slate-50 rounded-2xl outline-none text-slate-600" value={datos.tipo_inmueble} onChange={e => setDatos({...datos, tipo_inmueble: e.target.value})}>
+        </select>
+        <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none text-slate-600" value={datos.tipo_inmueble} onChange={e => setDatos({...datos, tipo_inmueble: e.target.value})}>
             <option value="Apartamento">Apartamento</option>
             <option value="Casa">Casa</option>
             <option value="Habitación">Habitación</option>
@@ -63,33 +93,29 @@ export const Formulario = ({ usuario, alTerminar }) => {
             <option value="Finca">Finca</option>
             <option value="Granja">Granja</option>
             <option value="Terreno">Terreno</option>
-          </select>
-        </div>
+        </select>
 
-        <div className="flex gap-2">
-          <input className="w-1/2 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="$ Precio" type="number" onChange={e => setDatos({...datos, precio: e.target.value})} value={datos.precio} required />
-          <div className="relative w-1/2">
+        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none" placeholder="$ Precio" type="number" onChange={e => setDatos({...datos, precio: e.target.value})} value={datos.precio} required />
+        
+        <div className="relative w-full">
             <Percent className="absolute left-4 top-4 text-slate-400" size={18} />
             <input className="w-full p-4 pl-12 bg-slate-50 rounded-2xl outline-none" placeholder="Comisión %" type="number" onChange={e => setDatos({...datos, comision: e.target.value})} value={datos.comision} required />
-          </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 md:col-span-2">
           <input className="w-1/3 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Habs" type="number" onChange={e => setDatos({...datos, habitaciones: e.target.value})} value={datos.habitaciones} />
           <input className="w-1/3 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Baños" type="number" onChange={e => setDatos({...datos, banos: e.target.value})} value={datos.banos} />
           <input className="w-1/3 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Zona" onChange={e => setDatos({...datos, zona: e.target.value})} value={datos.zona} required />
         </div>
 
-        <div className="flex gap-2">
-            <input className="w-1/2 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Metraje (m²)" type="number" onChange={e => setDatos({...datos, metraje: e.target.value})} value={datos.metraje} required />
-            <input className="w-1/2 p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Link Google Maps" onChange={e => setDatos({...datos, mapa_url: e.target.value})} value={datos.mapa_url} />
-        </div>
+        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Metraje (m²)" type="number" onChange={e => setDatos({...datos, metraje: e.target.value})} value={datos.metraje} required />
+        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none" placeholder="Link Google Maps" onChange={e => setDatos({...datos, mapa_url: e.target.value})} value={datos.mapa_url} />
 
-        <textarea className="w-full p-4 bg-slate-50 rounded-2xl outline-none min-h-[100px]" placeholder="Descripción detallada: características, ubicación exacta, etc." onChange={e => setDatos({...datos, descripcion: e.target.value})} value={datos.descripcion} />
+        <textarea className="w-full p-4 bg-slate-50 rounded-2xl outline-none min-h-[100px] md:col-span-2" placeholder="Descripción detallada: características, ubicación exacta, etc." onChange={e => setDatos({...datos, descripcion: e.target.value})} value={datos.descripcion} />
 
-        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-2 border-green-100" placeholder="Tu WhatsApp (Agente)" onChange={e => setDatos({...datos, whatsapp: e.target.value})} value={datos.whatsapp} required />
+        <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none border-2 border-green-100 md:col-span-2" placeholder="Tu WhatsApp (Agente)" onChange={e => setDatos({...datos, whatsapp: e.target.value})} value={datos.whatsapp} required />
 
-        <button disabled={subiendo} className="w-full bg-[#0056b3] text-white font-black py-5 rounded-[25px] flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all">
+        <button disabled={subiendo} className="w-full bg-[#0056b3] text-white font-black py-5 rounded-[25px] flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all md:col-span-2">
           {subiendo ? <Loader2 className="animate-spin" /> : 'PUBLICAR EN RED MLS'}
         </button>
       </div>
