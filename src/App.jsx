@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase'; 
-import Login from './components/Login';
-import Navbar from './components/Navbar';
-import { Formulario } from './components/Formulario';
-import CardPropiedad from './components/CardPropiedad';
+import Login from './components/Login.jsx';
+import Navbar from './components/Navbar.jsx';
+import { Formulario } from './components/Formulario.jsx';
+import CardPropiedad from './components/CardPropiedad.jsx';
 
 import { PlusCircle, X } from 'lucide-react';
 
