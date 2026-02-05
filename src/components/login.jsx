@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabase';
 
-function Login() {
+function Login({ onNotificar }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
@@ -27,9 +27,10 @@ function Login() {
 
     const { error } = result;
     if (error) {
-        alert("Error: " + error.message);
+        if (onNotificar) onNotificar("Error: " + error.message, 'error');
+        else alert("Error: " + error.message);
     } else if (esRegistro) {
-        alert("¡Registro exitoso! Revisa tu correo para confirmar (o inicia sesión si no activaste confirmación).");
+        onNotificar("¡Registro exitoso! Revisa tu correo para confirmar (o inicia sesión si no activaste confirmación).");
         setEsRegistro(false);
     }
     setLoading(false);
