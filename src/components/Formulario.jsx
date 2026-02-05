@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
-import { Camera, Loader2, Percent } from 'lucide-react';
+import { Camera, Loader2, Percent, Wand2 } from 'lucide-react';
 import { propiedadesService } from '../propiedadesService';
+import { parsearTextoWhatsApp } from '../utils/whatsappParser';
 
 export const Formulario = ({ usuario, alTerminar }) => {
   const [subiendo, setSubiendo] = useState(false);
   const [foto, setFoto] = useState(null);
+  const [mostrarImportador, setMostrarImportador] = useState(false);
+  const [textoWA, setTextoWA] = useState('');
+  
   const [datos, setDatos] = useState({
     titulo: '', precio: '', whatsapp: '', zona: '', 
     habitaciones: '', banos: '', comision: '5',
     tipo_inmueble: 'Apartamento', tipo_operacion: 'Venta', descripcion: '',
     metraje: '', mapa_url: ''
   });
+
+  const importarDesdeWA = () => {
+    const datosExtraidos = parsearTextoWhatsApp(textoWA);
+    setDatos(prev => ({
+        ...prev,
+        ...datosExtraidos,
+        // Preservamos el whatsapp del agente si ya lo puso, sino lo dejamos vacío
+        whatsapp: prev.whatsapp 
+    }));
+    setMostrarImportador(false);
+  };
 
   const enviar = async (e) => {
     e.preventDefault();

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageCircle, MapPin, User, CheckCircle, Info, Home, Map } from 'lucide-react';
+import { MessageCircle, MapPin, User, CheckCircle, Info, Home, Map, Share2, Trash2 } from 'lucide-react';
 import { propiedadesService } from '../propiedadesService';
 
 function CardPropiedad({ propiedad, usuarioActual, alActualizar }) {
@@ -9,6 +9,29 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar }) {
 
   const mensajeWA = `Hola, solicito información de: ${propiedad.titulo} (${propiedad.zona})`;
   const urlWA = `https://wa.me/${propiedad.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(mensajeWA)}`;
+
+  const compartirFicha = () => {
+    const texto = `🏡 *NUEVO INGRESO - NEXUSREAL*\n\n` +
+                  `✨ *${propiedad.titulo}*\n` +
+                  `📍 Zona: ${propiedad.zona}\n` +
+                  `💰 Precio: $${Number(propiedad.precio).toLocaleString()}\n` +
+                  `📐 Metraje: ${propiedad.metraje || '?'} m²\n` +
+                  `🛏 Habitaciones: ${propiedad.habitaciones}\n` +
+                  `🚿 Baños: ${propiedad.banos}\n\n` +
+                  `ℹ *Más detalles y fotos aquí:* 👇\n` +
+                  `https://nexusreal.vercel.app`; 
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+  };
+
+  const eliminarPropiedad = async () => {
+    if (!window.confirm("¿Estás seguro de ELIMINAR esta propiedad? No se puede deshacer.")) return;
+    try {
+        await propiedadesService.eliminar(propiedad.id);
+        alActualizar && alActualizar();
+    } catch (e) {
+        alert("Error al eliminar: " + e.message);
+    }
+  };
 
   const cerrarOperacion = async () => {
     if (!window.confirm("¿Confirmar cierre de operación?")) return;

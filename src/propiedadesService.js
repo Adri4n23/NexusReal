@@ -21,6 +21,11 @@ export const propiedadesService = {
     if (error) throw error;
   },
 
+  async eliminar(id) {
+    const { error } = await supabase.from('propiedades').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   async subirFoto(file) {
     // Generamos un nombre único para evitar conflictos
     const fileExt = file.name.split('.').pop();
