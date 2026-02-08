@@ -42,6 +42,9 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
   const precioUSD = Number(propiedad.precio);
   const precioBS = tasaBCV ? (precioUSD * tasaBCV) : null;
 
+  const esDeMiAgencia = usuarioActual?.user_metadata?.organizacion_id === propiedad.organizacion_id;
+  const esPropiedadMia = usuarioActual?.id === propiedad.agente_id;
+
   const siguienteFoto = (e) => {
     e.stopPropagation();
     setIndiceFoto((prev) => (prev + 1) % galeria.length);
@@ -219,6 +222,20 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
              <span className="bg-white/90 backdrop-blur-sm text-slate-700 text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1 shadow-sm w-max">
                 <Home size={10} /> {propiedad.tipo_inmueble || 'Inmueble'}
             </span>
+        </div>
+
+        {/* Badge de Red MLS / Agencia */}
+        <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1">
+            <div className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter shadow-lg backdrop-blur-md flex items-center gap-1.5 ${
+                esPropiedadMia 
+                ? 'bg-green-500/90 text-white border border-green-400/50' 
+                : esDeMiAgencia 
+                ? 'bg-blue-500/90 text-white border border-blue-400/50'
+                : 'bg-slate-900/80 text-white border border-slate-700/50'
+            }`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${esPropiedadMia || esDeMiAgencia ? 'bg-white animate-pulse' : 'bg-blue-400'}`}></div>
+                {esPropiedadMia ? 'Mi Propiedad' : propiedad.organizacion_nombre || 'Red MLS'}
+            </div>
         </div>
 
         {vendido && (

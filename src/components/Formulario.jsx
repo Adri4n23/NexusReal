@@ -10,10 +10,18 @@ export const Formulario = ({ usuario, alTerminar, onError }) => {
   const [textoWA, setTextoWA] = useState('');
   
   const [datos, setDatos] = useState({
-    titulo: '', precio: '', whatsapp: '', zona: '', 
-    habitaciones: '', banos: '', comision: '5',
-    tipo_inmueble: 'Apartamento', tipo_operacion: 'Venta', descripcion: '',
-    metraje: '', mapa_url: ''
+    titulo: '', 
+    precio: '', 
+    whatsapp: usuario?.user_metadata?.telefono || '', 
+    zona: '', 
+    habitaciones: '', 
+    banos: '', 
+    comision: '5',
+    tipo_inmueble: 'Apartamento', 
+    tipo_operacion: 'Venta', 
+    descripcion: '',
+    metraje: '', 
+    mapa_url: ''
   });
 
   const importarDesdeWA = () => {

@@ -4,7 +4,7 @@ import { supabase } from '../supabase';
 import { propiedadesService } from '../propiedadesService';
 import { MessageCircle, MapPin, User, Home, Map, Share2, AlertCircle, Loader2, Tag, CalendarDays, Bed, Bath, Ruler, ArrowLeft, ArrowRight, DollarSign, FileText, Users, Send, Info } from 'lucide-react';
 
-function DetallePropiedad({ onNotificar }) {
+function DetallePropiedad({ session, onNotificar }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [propiedad, setPropiedad] = useState(null);
@@ -12,26 +12,60 @@ function DetallePropiedad({ onNotificar }) {
   const [error, setError] = useState(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [tasaBCV, setTasaBCV] = useState(null);
+  const usuario = session?.user;
   
   // Estados para CRM
   const [prospectos, setProspectos] = useState([]);
   const [nuevoProspecto, setNuevoProspecto] = useState({ nombre: '', telefono: '', notas: '' });
   const [mostrandoCRM, setMostrandoCRM] = useState(false);
+  const [mostrarModalCierre, setMostrarModalCierre] = useState(false);
+  const [datosCierre, setDatosCierre] = useState({ precio_cierre: '', comision_total: '', nota_cierre: '' });
+
+  // Lógica de Propiedad Ajena (MLS)
+  const esPropiedadMia = propiedad?.agente_id === usuario?.id;
+  const esDeMiAgencia = propiedad?.organizacion_id === usuario?.user_metadata?.organizacion_id;
+  const esAdmin = usuario?.user_metadata?.rol === 'admin';
+  const puedeVerCRM = esPropiedadMia || (esDeMiAgencia && esAdmin);
+
+  const handleCerrarVenta = async (e) => {
+    e.preventDefault();
+    try {
+      await propiedadesService.cerrarVenta(id, {
+        ...datosCierre,
+        titulo_propiedad: propiedad.titulo,
+        zona_propiedad: propiedad.zona
+      }, usuario);
+      onNotificar && onNotificar("¡Venta cerrada con éxito! La propiedad ha sido marcada como vendida.", "success");
+      setMostrarModalCierre(false);
+      setPropiedad({ ...propiedad, estado: 'vendido' });
+    } catch (err) {
+      onNotificar && onNotificar("Error al cerrar venta: " + err.message, "error");
+    }
+  };
 
   useEffect(() => {
     fetchPropiedad();
-    fetchTasaBCV();
-  }, [id, onNotificar]);
+    cargarTasaInicial();
+  }, [id]);
+
+  async function cargarTasaInicial() {
+    try {
+      const tasa = await propiedadesService.obtenerTasa();
+      setTasaBCV(tasa);
+    } catch (e) {
+      console.error("Error cargando tasa inicial:", e);
+    }
+  }
 
   useEffect(() => {
-    if (propiedad) {
+    if (propiedad && puedeVerCRM) {
       fetchProspectos();
     }
-  }, [propiedad]);
+  }, [propiedad, puedeVerCRM]);
 
   async function fetchProspectos() {
     try {
-      const data = await propiedadesService.obtenerProspectos(id);
+      const data = await propiedadesService.obtenerProspectos(id, usuario);
       setProspectos(data || []);
     } catch (error) {
       console.error("Error cargando prospectos:", error);
@@ -49,8 +83,9 @@ function DetallePropiedad({ onNotificar }) {
       await propiedadesService.agregarProspecto({
         ...nuevoProspecto,
         propiedad_id: id,
-        estado: 'nuevo'
-      });
+        estado: 'nuevo',
+        agente_id: usuario.id
+      }, usuario);
       
       onNotificar("Prospecto registrado con éxito", "success");
       setNuevoProspecto({ nombre: '', telefono: '', notas: '' });
@@ -60,38 +95,13 @@ function DetallePropiedad({ onNotificar }) {
     }
   }
 
-  async function fetchTasaBCV() {
-    try {
-      const tasa = await propiedadesService.obtenerTasaBCV();
-      setTasaBCV(tasa);
-    } catch (error) {
-      console.error("Error al obtener la tasa del BCV en DetallePropiedad:", error);
-      onNotificar("Error al obtener la tasa del BCV.", "error");
-    }
-  }
-
   async function fetchPropiedad() {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('propiedades')
-        .select('*') 
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-      if (!data) {
-        setError("Propiedad no encontrada.");
-      }
+      const data = await propiedadesService.obtenerPorId(id);
       setPropiedad(data);
     } catch (err) {
-      console.error("Error al cargar la propiedad:", err);
       setError(err.message);
-      onNotificar("Error al cargar la propiedad: " + err.message, 'error');
-
-
     } finally {
       setLoading(false);
     }
@@ -146,16 +156,22 @@ function DetallePropiedad({ onNotificar }) {
   const mensajeWA = `Hola, solicito información de: ${propiedad.titulo} (${propiedad.zona})`;
   const urlWA = `https://wa.me/${propiedad.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(mensajeWA)}`;
 
-  const compartirFicha = () => {
-    const texto = `🏡 *NUEVO INGRESO - NEXUSREAL*\n\n` +
+  // --- SMART SHARING (FICHA BLANCA) ---
+  const compartirComoMia = () => {
+    const miNombre = usuario?.user_metadata?.nombre || usuario?.email;
+    const miAgencia = usuario?.user_metadata?.agencia_nombre || 'Independiente';
+    const miTlf = usuario?.user_metadata?.telefono || '';
+
+    const texto = `🏡 *Oportunidad Inmobiliaria*\n\n` +
                   `✨ *${propiedad.titulo}*\n` +
                   `📍 Zona: ${propiedad.zona}\n` +
                   `💰 Precio: $${Number(propiedad.precio).toLocaleString()}\n` +
-                  `📐 Metraje: ${propiedad.metraje || '?'} m²\n` +
-                  `🛏 Habitaciones: ${propiedad.habitaciones}\n` +
-                  `🚿 Baños: ${propiedad.banos}\n\n` +
-                  `ℹ *Más detalles y fotos aquí:* 👇\n` +
-                  `${window.location.origin}/propiedad/${propiedad.id}`; 
+                  `📐 Metraje: ${propiedad.metraje || '?'} m²\n\n` +
+                  `📞 *Contacto:* ${miNombre} (${miAgencia})\n` +
+                  `${miTlf ? `📱 WhatsApp: ${miTlf}\n` : ''}` +
+                  `ℹ *Ver fotos y detalles:* 👇\n` +
+                  `${window.location.origin}/propiedad/${propiedad.id}`;
+    
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
@@ -233,6 +249,14 @@ function DetallePropiedad({ onNotificar }) {
           <button onClick={() => navigate('/')} className="absolute top-4 left-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors flex items-center gap-1">
             <ArrowLeft size={20} /> <span className="hidden md:inline">Volver</span>
           </button>
+
+          {/* Badge de Agencia (MLS) */}
+          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <span className="text-xs font-black text-slate-800 uppercase tracking-tighter">
+              {propiedad.organizacion_nombre || 'MLS Network'}
+            </span>
+          </div>
         </div>
 
         <div className="p-6 md:p-8">
@@ -255,6 +279,40 @@ function DetallePropiedad({ onNotificar }) {
           </div>
 
           <p className="text-slate-700 mb-6 leading-relaxed">{propiedad.descripcion}</p>
+
+          {/* Panel de Contacto / MLS Smart Share */}
+          <div className="bg-slate-900 rounded-[24px] p-6 text-white mb-8">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center font-black text-xl">
+                  {propiedad.agente_nombre?.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs uppercase font-bold tracking-widest">Agente Listador</p>
+                  <h3 className="text-lg font-bold">{propiedad.agente_nombre}</h3>
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                <a 
+                  href={`https://wa.me/${propiedad.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, me interesa: ${propiedad.titulo}`)}`}
+                  target="_blank"
+                  className="flex-1 md:flex-none bg-green-500 hover:bg-green-600 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                >
+                  <MessageCircle size={20} /> Contactar
+                </a>
+
+                {!esPropiedadMia && (
+                  <button 
+                    onClick={compartirComoMia}
+                    className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Share2 size={20} /> Compartir como mío
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {propiedad.tipo_inmueble !== 'Terreno' && (
@@ -314,14 +372,27 @@ function DetallePropiedad({ onNotificar }) {
             </button>
           </div>
 
-          {/* Sección CRM */}
-          {mostrandoCRM && (
-            <div className="mt-8 pt-8 border-t border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">
-                <Users className="text-blue-600" /> Control de Prospectos
-              </h3>
+          {/* ACCIONES DE ADMINISTRACIÓN (Solo dueño o admin) */}
+          {puedeVerCRM && propiedad?.estado === 'disponible' && (
+            <button 
+              onClick={() => setMostrarModalCierre(true)}
+              className="w-full bg-green-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-green-200 hover:bg-green-700 transition-all mt-4"
+            >
+              <Users size={20} />
+              CERRAR VENTA (MARK SOLD)
+            </button>
+          )}
+
+          {/* CRM / PROSPECTOS (Solo dueño o admin) */}
+          {puedeVerCRM ? (
+            <div className="mt-8 pt-8 border-t border-slate-100">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <Users className="text-blue-600" /> Control de Prospectos
+                </h3>
+                <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-black uppercase">Privado de Agencia</span>
+              </div>
               
-              {/* Formulario Nuevo Prospecto */}
               <form onSubmit={handleGuardarProspecto} className="bg-slate-50 p-4 rounded-2xl mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <input 
@@ -340,7 +411,7 @@ function DetallePropiedad({ onNotificar }) {
                   />
                 </div>
                 <textarea 
-                  placeholder="Notas (ej: Le gustó la cocina, viene el martes...)"
+                  placeholder="Notas internas..."
                   className="w-full bg-white border-none rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 shadow-sm mb-4 h-20"
                   value={nuevoProspecto.notas}
                   onChange={(e) => setNuevoProspecto({...nuevoProspecto, notas: e.target.value})}
@@ -353,7 +424,6 @@ function DetallePropiedad({ onNotificar }) {
                 </button>
               </form>
 
-              {/* Lista de Prospectos */}
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {prospectos.length === 0 ? (
                   <div className="text-center py-8">
@@ -378,6 +448,16 @@ function DetallePropiedad({ onNotificar }) {
                 )}
               </div>
             </div>
+          ) : (
+            <div className="mt-8 bg-blue-50 p-6 rounded-[24px] flex items-center gap-4 text-blue-800">
+              <div className="bg-blue-600 p-3 rounded-2xl text-white">
+                <Info size={24} />
+              </div>
+              <div>
+                <p className="font-black uppercase text-xs tracking-wider mb-1">Aviso de Red MLS</p>
+                <p className="text-sm font-medium">Estás viendo una propiedad de otra agencia. Los datos del CRM son privados para el dueño, pero puedes usar el "Smart Share" para ofrecerla como tuya.</p>
+              </div>
+            </div>
           )}
 
           {propiedad.mapa_url && (
@@ -398,6 +478,72 @@ function DetallePropiedad({ onNotificar }) {
           )}
         </div>
       </div>
+      {/* MODAL CIERRE DE VENTA */}
+      {mostrarModalCierre && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="bg-gradient-to-br from-green-600 to-green-700 p-8 text-center text-white">
+              <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Building2 size={40} className="text-white" />
+              </div>
+              <h3 className="text-2xl font-black uppercase italic tracking-tight">Finalizar Negocio</h3>
+              <p className="text-green-100 text-xs mt-2 font-bold uppercase tracking-widest">Registrar Venta Exitosa</p>
+            </div>
+
+            <form onSubmit={handleCerrarVenta} className="p-8 space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Precio Real de Cierre ($)</label>
+                <input 
+                  type="number" 
+                  required
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 px-6 outline-none focus:border-green-500 transition-all font-bold text-slate-700"
+                  placeholder="Ej: 45000"
+                  value={datosCierre.precio_cierre}
+                  onChange={e => setDatosCierre({...datosCierre, precio_cierre: e.target.value})}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Comisión Total Cobrada ($)</label>
+                <input 
+                  type="number" 
+                  required
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 px-6 outline-none focus:border-green-500 transition-all font-bold text-slate-700"
+                  placeholder="Ej: 2250"
+                  value={datosCierre.comision_total}
+                  onChange={e => setDatosCierre({...datosCierre, comision_total: e.target.value})}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Notas del Cierre</label>
+                <textarea 
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 px-6 outline-none focus:border-green-500 transition-all font-medium text-slate-700 text-sm h-24 resize-none"
+                  placeholder="Detalles del comprador, forma de pago..."
+                  value={datosCierre.nota_cierre}
+                  onChange={e => setDatosCierre({...datosCierre, nota_cierre: e.target.value})}
+                ></textarea>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setMostrarModalCierre(false)}
+                  className="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 bg-green-600 text-white font-bold py-4 rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-100 uppercase text-[10px] tracking-widest"
+                >
+                  Confirmar Venta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,8 @@ function Login({ onNotificar }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
+  const [agencia, setAgencia] = useState('');
+  const [telefono, setTelefono] = useState('');
   const [loading, setLoading] = useState(false);
   const [esRegistro, setEsRegistro] = useState(false);
 
@@ -18,7 +20,12 @@ function Login({ onNotificar }) {
         email, 
         password,
         options: {
-          data: { nombre: nombre } // Guardamos el nombre del agente
+          data: { 
+            nombre: nombre,
+            agencia_nombre: agencia || 'Independiente',
+            telefono: telefono,
+            rol: 'agente' // Por defecto son agentes
+          }
         }
       });
     } else {
@@ -43,14 +50,18 @@ function Login({ onNotificar }) {
           <h2 className="text-4xl font-black text-gray-900">NEXUS REAL</h2>
           <p className="text-gray-500 mt-2">{esRegistro ? 'Crear nueva cuenta de Agente' : 'Acceso exclusivo para Agentes'}</p>
         </div>
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleLogin} className="space-y-4">
           {esRegistro && (
-             <input type="text" required className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nombre completo" onChange={(e) => setNombre(e.target.value)} />
+            <>
+              <input type="text" required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Nombre completo" onChange={(e) => setNombre(e.target.value)} />
+              <input type="text" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Nombre de tu Inmobiliaria (opcional)" onChange={(e) => setAgencia(e.target.value)} />
+              <input type="tel" required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Teléfono (WhatsApp)" onChange={(e) => setTelefono(e.target.value)} />
+            </>
           )}
-          <input type="email" required className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Correo" onChange={(e) => setEmail(e.target.value)} />
-          <input type="password" required className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Contraseña" onChange={(e) => setPassword(e.target.value)} />
+          <input type="email" required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Correo" onChange={(e) => setEmail(e.target.value)} />
+          <input type="password" required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Contraseña" onChange={(e) => setPassword(e.target.value)} />
           
-          <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+          <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 mt-2">
             {loading ? 'Procesando...' : (esRegistro ? 'Registrarme' : 'Iniciar Sesión')}
           </button>
         </form>
