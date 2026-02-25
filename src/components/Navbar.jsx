@@ -1,18 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Search, LogOut, Edit3, RefreshCw, Building2 } from 'lucide-react';
+import { Search, LogOut, Edit3, RefreshCw, Building2, LayoutDashboard, X, MapPin, Wallet, PlusCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { propiedadesService } from '../propiedadesService';
 import TasaBCV from './TasaBCV';
 
-function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar }) {
-  const [refrescando, setRefrescando] = React.useState(false);
-  const [mostrarModalTasa, setMostrarModalTasa] = React.useState(false);
-  const [nuevaTasa, setNuevaTasa] = React.useState('');
+function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar, alBuscar, alBuscarZona, onPublicar }) {
+  const [refrescando, setRefrescando] = useState(false);
+  const [mostrarModalTasa, setMostrarModalTasa] = useState(false);
+  const [nuevaTasa, setNuevaTasa] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [zona, setZona] = useState('');
 
   const esAdmin = usuario?.user_metadata?.rol === 'admin';
 
-  // Sincronizar con la tasa que viene del padre solo cuando el modal se abre
-  React.useEffect(() => {
+  useEffect(() => {
     if (mostrarModalTasa && tasaBCV) {
       setNuevaTasa(tasaBCV.toString());
     }
@@ -24,21 +26,17 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar }) {
       onNotificar?.("Ingresa un valor válido mayor a 0", "error");
       return;
     }
-    
+
     try {
       setRefrescando(true);
       const exito = await propiedadesService.guardarTasaManual(valorNum);
-      
       if (exito) {
-        if (setTasaBCV) {
-          setTasaBCV(valorNum);
-        }
+        if (setTasaBCV) setTasaBCV(valorNum);
         onNotificar?.("Tasa actualizada correctamente", "success");
         setMostrarModalTasa(false);
       }
     } catch (e) {
-      console.error("Error en Navbar:", e);
-      onNotificar?.("Error al guardar: " + (e.message || "Problema de conexión"), "error");
+      onNotificar?.("Error al guardar: " + e.message, "error");
     } finally {
       setRefrescando(false);
     }
@@ -50,9 +48,7 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar }) {
       const tasa = await propiedadesService.obtenerTasaOficial();
       if (tasa) {
         setNuevaTasa(tasa.toString());
-        onNotificar?.("Tasa oficial obtenida. Verifica y guarda.", "success");
-      } else {
-        onNotificar?.("No se pudo conectar con el BCV. Ingresa el valor manual.", "error");
+        onNotificar?.("Tasa oficial obtenida.", "success");
       }
     } catch (e) {
       onNotificar?.("Error al consultar tasa", "error");
@@ -61,107 +57,144 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar }) {
     }
   };
 
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setBusqueda(val);
+    if (alBuscar) alBuscar(val);
+  };
+
+  const handleZonaChange = (e) => {
+    const val = e.target.value;
+    setZona(val);
+    if (alBuscarZona) alBuscarZona(val);
+  };
+
+  const limpiarBusqueda = () => {
+    setBusqueda('');
+    if (alBuscar) alBuscar('');
+  };
+
+  const limpiarZona = () => {
+    setZona('');
+    if (alBuscarZona) alBuscarZona('');
+  };
+
   return (
     <>
-      {/* MODAL PARA EDITAR TASA - Fuera del NAV para evitar cortes visuales */}
       {mostrarModalTasa && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[999] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-sm rounded-[35px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-white/20">
-            <div className="bg-gradient-to-br from-gray-800 to-gray-700 p-6 text-center text-white relative">
-              <div className="bg-blue-500/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 border border-blue-400/30">
-                <Edit3 size={28} className="text-blue-400" />
-              </div>
-              
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[35px] overflow-hidden shadow-2xl border border-slate-100">
+            <div className="bg-blue-600 p-6 text-center text-white relative">
               <h3 className="text-xl font-black uppercase tracking-tight">Ajustar Tasa</h3>
-              <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest">Control de Cambio Nexus</p>
-              
-              <button 
+              <button
                 onClick={consultarTasaOficial}
                 disabled={refrescando}
-                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all group"
-                title="Sincronizar con BCV"
+                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all"
               >
-                <RefreshCw size={14} className={`text-blue-400 ${refrescando ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                <RefreshCw size={14} className={refrescando ? 'animate-spin' : ''} />
               </button>
             </div>
-
-            <div className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Valor en Bolívares (Bs.)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">Bs.</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-blue-500 transition-all font-black text-slate-700 text-lg"
-                    value={nuevaTasa}
-                    onChange={(e) => setNuevaTasa(e.target.value)}
-                    placeholder="0.00"
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setMostrarModalTasa(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 font-bold py-3.5 rounded-2xl hover:bg-gray-300 transition-all uppercase text-[10px] tracking-widest"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={guardarTasaManual}
-                  disabled={refrescando}
-                  className="flex-1 bg-blue-600 text-white font-bold py-3.5 rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30 uppercase text-[10px] tracking-widest disabled:opacity-50"
-                >
-                  {refrescando ? 'Procesando...' : 'Guardar Tasa'}
-                </button>
+            <div className="p-6 space-y-4 text-slate-800">
+              <input
+                type="number"
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 px-4 outline-none focus:border-blue-500 font-bold"
+                value={nuevaTasa}
+                onChange={e => setNuevaTasa(e.target.value)}
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setMostrarModalTasa(false)} className="flex-1 bg-slate-100 py-3 rounded-2xl font-bold text-slate-400">Cancelar</button>
+                <button onClick={guardarTasaManual} className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-bold">Guardar</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* BARRA DE NAVEGACIÓN */}
-      <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-black/60 backdrop-blur-xl">
-        <div className="container mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-amber-500 flex items-center justify-center rounded-lg shadow-[0_0_20px_rgba(245,158,11,0.4)]">
-              <Building2 className="text-black" />
-            </div>
-            <span className="text-2xl font-serif tracking-[0.2em] uppercase text-white">Nexus</span>
-          </div>
-          
-          <div className="hidden md:flex items-center gap-8 text-xs uppercase tracking-[0.2em] font-medium text-gray-400">
-            <a href="#" className="hover:text-amber-500 transition-colors">Inicio</a>
-            <a href="#" className="hover:text-amber-500 transition-colors">Propiedades</a>
-            <a href="#" className="hover:text-amber-500 transition-colors">Servicios</a>
-            <a href="#" className="hover:text-amber-500 transition-colors">Contacto</a>
-          </div>
+      <header className="fixed top-0 w-full z-50 transition-all duration-300">
+        <div className="bg-[#00429d] rounded-b-[40px] shadow-2xl pb-6 px-6 pt-4">
+          <div className="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
 
-          <div className="flex items-center gap-4">
-             <TasaBCV tasa={tasaBCV} onNotificar={onNotificar} />
-             
-             {esAdmin && (
+            {/* LADO IZQUIERDO: LOGO */}
+            <Link to="/" className="flex items-center gap-2">
+              <span className="text-2xl md:text-3xl font-black text-white tracking-tight">NexusReal</span>
+            </Link>
+
+            {/* CENTRO: BUSCADOR DUAL (Keywords + Zona) */}
+            <div className="flex-1 max-w-3xl w-full flex bg-white rounded-2xl shadow-inner border-2 border-transparent focus-within:border-blue-300 overflow-hidden transition-all">
+              <div className="flex-1 relative border-r border-slate-100">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">
+                  <Search size={16} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ej: Penthouse, Casa..."
+                  value={busqueda}
+                  onChange={handleSearchChange}
+                  className="w-full py-2.5 pl-12 pr-4 outline-none text-slate-700 font-medium text-sm placeholder:text-slate-300"
+                />
+              </div>
+              <div className="flex-1 relative bg-slate-50/50">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-600">
+                  <MapPin size={16} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Zona o Ciudad..."
+                  value={zona}
+                  onChange={handleZonaChange}
+                  className="w-full py-2.5 pl-12 pr-10 outline-none text-slate-700 font-bold text-sm bg-transparent placeholder:text-slate-300"
+                />
+                {zona && (
+                  <button onClick={limpiarZona} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 p-1">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* LADO DERECHO: ACCIONES */}
+            <div className="flex items-center gap-3">
+              <div className="hidden lg:block">
+                <TasaBCV tasa={tasaBCV} />
+              </div>
+
+              <Link to="/bolsillo" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Mis Ganancias">
+                <Wallet size={20} />
+              </Link>
+
+              {/* Botón de Publicar en Navbar */}
+              {onPublicar && (
                 <button
-                  onClick={() => setMostrarModalTasa(true)}
-                  className="p-2 bg-white/5 rounded-full text-amber-500 hover:bg-white/10 transition-all"
-                  title="Ajuste Manual"
+                  onClick={onPublicar}
+                  className="hidden md:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all shadow-lg shadow-blue-600/20"
                 >
-                  <Edit3 size={16} />
+                  <PlusCircle size={18} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Publicar</span>
                 </button>
               )}
 
-             <button 
-                onClick={() => supabase.auth.signOut()} 
-                className="bg-red-500/20 text-red-400 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-red-500/40 transition-all"
-                title="Salir"
+              {esAdmin && (
+                <>
+                  <Link to="/dashboard" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Panel de Control">
+                    <LayoutDashboard size={20} />
+                  </Link>
+                  <button onClick={() => setMostrarModalTasa(true)} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Ajustar Tasa">
+                    <Edit3 size={18} />
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="bg-white/10 text-white p-2.5 rounded-full hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                title="Cerrar Sesión"
               >
-                Salir
-             </button>
+                <LogOut size={20} />
+              </button>
+            </div>
           </div>
         </div>
-      </nav>
+      </header>
     </>
   );
 }

@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { supabase } from './supabase'; 
+import { supabase } from './supabase';
 import { propiedadesService } from './propiedadesService';
 import Login from './components/Login.jsx';
 import LandingPage from './components/LandingPage.jsx';
 import { Notificacion } from './components/Notificacion.jsx';
 import Inicio from './components/Inicio.jsx';
 import DetallePropiedad from './components/DetallePropiedad.jsx';
-import { ShieldAlert } from 'lucide-react';
+import AdminDashboard from './components/AdminDashboard.jsx';
+import { MiBolsillo } from './components/MiBolsillo.jsx';
+import { ShieldAlert, Loader2 } from 'lucide-react';
 
 function App() {
   const [session, setSession] = useState(null);
   const [licencia, setLicencia] = useState({ activa: true, mensaje: '' });
   const [cargando, setCargando] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
-  
+
+  // Tasa Global Reactiva
+  const [tasaBCV, setTasaBCV] = useState(() => {
+    const cache = localStorage.getItem('tasa_bcv_cache');
+    return cache ? parseFloat(cache) : 48.50;
+  });
+
   // Estado para notificaciones
   const [notificacion, setNotificacion] = useState({ mensaje: '', tipo: '' });
 
-  const mostrarNotificacion = (mensaje, tipo = 'exito') => {
+  const mostrarNotificacion = (mensaje, tipo = 'success') => {
     setNotificacion({ mensaje, tipo });
   };
 
@@ -27,7 +35,11 @@ function App() {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       if (session) {
-        await validarAcceso(session.user);
+        await Promise.all([
+          validarAcceso(session.user),
+          cargarTasaGlobal()
+        ]);
+        iniciarSuscripcionesGlobales(session.user);
       }
       setCargando(false);
     };
@@ -38,26 +50,43 @@ function App() {
       setSession(session);
       if (session) {
         validarAcceso(session.user);
-        iniciarSuscripciones(session.user);
+        cargarTasaGlobal();
+        iniciarSuscripcionesGlobales(session.user);
       } else {
-        // Si el usuario cierra sesión, no es necesario cargar nada más
         setCargando(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const iniciarSuscripciones = (user) => {
-    // Suscribirse a notificaciones de venta
-    const sub = propiedadesService.subscribirseANotificaciones((notif) => {
-      // Si la notificación es de mi agencia o global (organizacion_id null)
+  const cargarTasaGlobal = async () => {
+    try {
+      const tasa = await propiedadesService.obtenerTasa();
+      if (tasa) {
+        setTasaBCV(tasa);
+        localStorage.setItem('tasa_bcv_cache', tasa.toString());
+      }
+    } catch (e) {
+      console.error("Error al cargar tasa inicial:", e);
+    }
+  };
+
+  const iniciarSuscripcionesGlobales = (user) => {
+    // 1. Suscripción a Notificaciones de Ventas
+    propiedadesService.subscribirseANotificaciones((notif) => {
       if (!notif.organizacion_id || notif.organizacion_id === user.user_metadata?.organizacion_id) {
         mostrarNotificacion(notif.mensaje, 'venta');
-        // Si es una venta, podríamos disparar un efecto de sonido o confeti aquí
       }
     });
-    return () => supabase.removeChannel(sub);
+
+    // 2. Suscripción a Tasa en Tiempo Real (Update DE GOLPE para todos)
+    propiedadesService.subscribirseATasa((nuevaTasa) => {
+      setTasaBCV(nuevaTasa);
+      localStorage.setItem('tasa_bcv_cache', nuevaTasa.toString());
+    });
   };
 
   const validarAcceso = async (user) => {
@@ -70,17 +99,17 @@ function App() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <p className="text-white text-2xl">Cargando...</p>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+        <p className="text-slate-400 font-black text-xs uppercase tracking-[0.3em]">Nexus Real Estate</p>
       </div>
     );
   }
 
-  // Renderizado condicional para bloqueo por licencia
   if (session && !licencia.activa) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
-        <div className="max-w-md bg-white rounded-[40px] p-10 shadow-2xl border-t-8 border-red-500">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6 text-center">
+        <div className="max-w-md bg-white rounded-[40px] p-10 shadow-2xl shadow-blue-900/10 border-t-8 border-red-500">
           <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
             <ShieldAlert size={40} className="text-red-500" />
           </div>
@@ -88,7 +117,7 @@ function App() {
           <p className="text-slate-600 font-medium mb-8 leading-relaxed">
             {licencia.mensaje}
           </p>
-          <button 
+          <button
             onClick={() => supabase.auth.signOut()}
             className="w-full py-4 bg-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-200 transition-all uppercase text-xs tracking-widest"
           >
@@ -99,34 +128,37 @@ function App() {
     );
   }
 
-  // Renderizado condicional con Notificaciones Globales
-  if (!session) {
-    return (
-      <>
-        <Notificacion 
-          mensaje={notificacion.mensaje} 
-          tipo={notificacion.tipo} 
-          onClose={() => setNotificacion({ mensaje: '', tipo: '' })} 
-        />
-        {showLogin ? <Login onNotificar={mostrarNotificacion} /> : <LandingPage onAccederClick={() => setShowLogin(true)} />}
-      </>
-    );
-  }
-
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-slate-50">
-        <Notificacion 
-          mensaje={notificacion.mensaje} 
-          tipo={notificacion.tipo} 
-          onClose={() => setNotificacion({ mensaje: '', tipo: '' })} 
-        />
-        
-        <Routes>
-          <Route path="/" element={<Inicio session={session} onNotificar={mostrarNotificacion} />} />
-          <Route path="/propiedad/:id" element={<DetallePropiedad session={session} onNotificar={mostrarNotificacion} />} />
-        </Routes>
-      </div>
+      {!session ? (
+        <>
+          <Notificacion
+            mensaje={notificacion.mensaje}
+            tipo={notificacion.tipo}
+            onClose={() => setNotificacion({ mensaje: '', tipo: '' })}
+          />
+          {showLogin ? <Login onNotificar={mostrarNotificacion} /> : <LandingPage onAccederClick={() => setShowLogin(true)} />}
+        </>
+      ) : (
+        <div className="min-h-screen bg-slate-50">
+          <Notificacion
+            mensaje={notificacion.mensaje}
+            tipo={notificacion.tipo}
+            onClose={() => setNotificacion({ mensaje: '', tipo: '' })}
+          />
+
+          <Routes>
+            <Route path="/" element={<Inicio session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} setTasaBCV={setTasaBCV} />} />
+            <Route path="/propiedad/:id" element={<DetallePropiedad session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} />} />
+            <Route path="/dashboard" element={<AdminDashboard session={session} onNotificar={mostrarNotificacion} />} />
+            <Route path="/bolsillo" element={
+              <div className="pt-32 pb-20 px-6 max-w-xl mx-auto">
+                <MiBolsillo session={session} onNotificar={mostrarNotificacion} />
+              </div>
+            } />
+          </Routes>
+        </div>
+      )}
     </BrowserRouter>
   );
 }

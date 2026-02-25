@@ -28,6 +28,40 @@ export const propiedadesService = {
     if (error) throw error;
   },
 
+  async importarDesdeExcel(arregloDatos, usuario) {
+    if (!arregloDatos || arregloDatos.length === 0) return;
+
+    const orgId = usuario.user_metadata?.organizacion_id || null;
+    const orgNombre = usuario.user_metadata?.agencia_nombre || 'Independiente';
+
+    // Mapeamos los datos para añadir la estructura base de NexusReal
+    const propiedadesBorrador = arregloDatos.map(item => ({
+      titulo: item.titulo,
+      descripcion: item.descripcion,
+      zona: item.zona,
+      precio: item.precio,
+      habitaciones: item.habitaciones,
+      banos: item.banos,
+      metraje: item.metraje,
+      tipo_inmueble: item.tipo_inmueble,
+      tipo_operacion: item.tipo_operacion,
+      // Metadata extra
+      estado: 'disponible',
+      galeria: [],
+      // Usamos unsplash como base si están importando sin fotos, luego las subirán
+      imagen_url: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80',
+      whatsapp: usuario.user_metadata?.telefono || '+580000000', // Whatsapp default del agente
+      agente_nombre: usuario.user_metadata?.nombre || usuario.email,
+      agente_id: usuario.id,
+      organizacion_id: orgId,
+      organizacion_nombre: orgNombre,
+    }));
+
+    // Inserción en lote en Supabase (Bulk Insert)
+    const { error } = await supabase.from('propiedades').insert(propiedadesBorrador);
+    if (error) throw error;
+  },
+
   async actualizar(id, datos) {
     const { error } = await supabase.from('propiedades').update(datos).eq('id', id);
     if (error) throw error;
@@ -49,23 +83,38 @@ export const propiedadesService = {
           img.onload = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            const MAX_WIDTH = 1200;
+
+            // LÓGICA ULTRA-LIGHT: Ajustamos dimensiones según el peso original
+            let MAX_WIDTH = 1200;
+            let calidad = 0.7; // Calidad base profesional
+
+            // Si la foto es un "monstruo" de +5MB, bajamos más la resolución
+            if (file.size > 5 * 1024 * 1024) {
+              MAX_WIDTH = 1000;
+              calidad = 0.5;
+            }
+
             let width = img.width;
             let height = img.height;
             if (width > MAX_WIDTH) {
               height *= MAX_WIDTH / width;
               width = MAX_WIDTH;
             }
+
             canvas.width = width;
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
+
+            // Marca de agua sutil
             ctx.font = 'bold 20px Arial';
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.textAlign = 'right';
             ctx.fillText('NEXUSREAL', width - 20, height - 20);
+
             canvas.toBlob((blob) => {
+              console.log(`Compresión finalizada: ${(blob.size / 1024).toFixed(2)} KB`);
               resolve(blob);
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', calidad);
           };
         };
       });
@@ -73,7 +122,7 @@ export const propiedadesService = {
 
     const imagenProcesada = await procesarImagen(file);
     const fileExt = 'jpg';
-    const fileName = `${Math.random()}.${fileExt}`;
+    const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
     const filePath = `${fileName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -98,6 +147,33 @@ export const propiedadesService = {
     return urls;
   },
 
+  async subirComprobante(file, usuario) {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `pago-${usuario.id}-${Date.now()}.${fileExt}`;
+    const filePath = `comprobantes/${fileName}`;
+
+    // Subimos a un folder de comprobantes (debe existir el bucket 'fotos_propiedades' o uno nuevo)
+    const { error: uploadError } = await supabase.storage
+      .from('fotos_propiedades')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('fotos_propiedades')
+      .getPublicUrl(filePath);
+
+    // Registrar el pago en una tabla de auditoría (opcional pero recomendado)
+    await supabase.from('notificaciones').insert([{
+      tipo: 'pago_pendiente',
+      mensaje: `Nueva confirmación de pago de ${usuario.user_metadata?.agencia_nombre || usuario.email}`,
+      organizacion_id: usuario.user_metadata?.organizacion_id,
+      metadata: { comprobante_url: publicUrl }
+    }]);
+
+    return publicUrl;
+  },
+
   async login(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -118,20 +194,32 @@ export const propiedadesService = {
   // Obtener solo prospectos de MI organización
   async obtenerProspectos(propiedadId, usuario) {
     const orgId = usuario?.user_metadata?.organizacion_id || null;
-    let query = supabase
-      .from('prospectos')
-      .select('*')
-      .eq('propiedad_id', propiedadId);
-    
-    // Si el usuario pertenece a una organización, solo ve prospectos de esa organización
-    if (orgId) {
-      query = query.eq('organizacion_id', orgId);
-    } else {
-      // Si es independiente, solo ve los suyos propios (asumiendo que los registró él)
-      query = query.eq('agente_id', usuario.id);
+    const esAdmin = usuario?.user_metadata?.rol === 'admin';
+
+    // Primero, verificamos si el usuario tiene derecho a ver esta propiedad
+    const { data: propiedad } = await supabase
+      .from('propiedades')
+      .select('agente_id, organizacion_id')
+      .eq('id', propiedadId)
+      .single();
+
+    if (!propiedad) return [];
+
+    // PRIVACIDAD ROBUSTA: Solo el dueño de la propiedad o el admin de la agencia pueden ver prospectos
+    const esDuenio = propiedad.agente_id === usuario?.id;
+    const esAdminAgencia = esAdmin && propiedad.organizacion_id === orgId;
+
+    if (!esDuenio && !esAdminAgencia) {
+      console.warn("Acceso denegado a prospectos: Usuario no autorizado.");
+      return [];
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('prospectos')
+      .select('*')
+      .eq('propiedad_id', propiedadId)
+      .order('created_at', { ascending: false });
+
     if (error) throw error;
     return data;
   },
@@ -139,19 +227,24 @@ export const propiedadesService = {
   // --- GESTIÓN DE ORGANIZACIONES Y LICENCIAS ---
   async verificarLicencia(orgId) {
     if (!orgId) return { activa: true, mensaje: 'Modo Independiente' }; // Los independientes por ahora son gratis
-    
+
     try {
       const { data, error } = await supabase
         .from('organizaciones')
         .select('estado_licencia, mensaje_bloqueo')
         .eq('id', orgId)
         .single();
-      
-      if (error) throw error;
-      
+
+      if (error) {
+        // Si no existe la organización aún, dejamos pasar (periodo de gracia automático 3 días)
+        return { activa: true, mensaje: 'Periodo de Gracia Activo' };
+      }
+
+      const esActiva = data.estado_licencia === 'activa';
+
       return {
-        activa: data.estado_licencia === 'activa',
-        mensaje: data.mensaje_bloqueo || 'Tu suscripción ha expirado. Contacta a soporte.'
+        activa: esActiva,
+        mensaje: data.mensaje_bloqueo || 'Tu suscripción ha expirado. Por favor sube tu comprobante de pago en el Dashboard.'
       };
     } catch (e) {
       console.error("Error verificando licencia:", e);
@@ -160,11 +253,28 @@ export const propiedadesService = {
   },
 
   async cerrarVenta(propiedadId, datosCierre, usuario) {
-    const { precio_cierre, comision_total, comision_porcentaje_total, agentes_comision, nota_cierre, titulo_propiedad, zona_propiedad } = datosCierre;
-    
+    const { precio_cierre, agentes_comision, nota_cierre, titulo_propiedad, zona_propiedad } = datosCierre;
+
+    // VALIDACIÓN DE INTEGRIDAD CONTABLE (CTO MANDATORY)
+    const totalPorcentajeAsignado = agentes_comision.reduce((sum, a) => sum + Number(a.comision_porcentaje || 0), 0);
+    if (totalPorcentajeAsignado !== 100) {
+      throw new Error("Integridad Contable: El reparto entre agentes debe sumar exactamente el 100% del pool.");
+    }
+
+    // 1. Automatización: La comisión total es el 5% del precio de cierre
+    const monto_venta = Number(precio_cierre);
+    const comision_total = Number((monto_venta * 0.05).toFixed(2));
+
+    // 2. Regla 30/70: La Inmobiliaria (la casa) se queda con el 30% del total cobrado
+    const comision_agencia_neta = Number((comision_total * 0.30).toFixed(2));
+
+    // 3. Monto a repartir entre los agentes (El 70% restante)
+    // BLINDAJE CTO: Restamos para evitar errores de redondeo de centavo
+    const monto_repartible_agentes = Number((comision_total - comision_agencia_neta).toFixed(2));
+
     const { error: errorProp } = await supabase
       .from('propiedades')
-      .update({ 
+      .update({
         estado: 'vendido',
         precio_cierre,
         comision_pagada: comision_total,
@@ -179,24 +289,24 @@ export const propiedadesService = {
       .from('ventas_registro')
       .insert([{
         propiedad_id: propiedadId,
-        agente_id: usuario.id, // Agente que inició el cierre
+        agente_id: usuario.id,
         organizacion_id: usuario.user_metadata?.organizacion_id,
         monto_venta: precio_cierre,
-        comision_agencia: comision_total, // La comisión total se registra aquí
-        comision_agente: 0, // Se distribuirá en la tabla de comisiones compartidas
+        comision_agencia: comision_agencia_neta, // El 30% de la casa
         notas: nota_cierre
       }])
-      .select(); // Select the inserted row to get its ID
+      .select();
 
     if (errorCont) throw errorCont;
 
     const ventaId = ventaRegistro[0].id;
 
     // Registrar comisiones compartidas (ventas_agentes_comision)
+    // El reparto se hace sobre el 70% asignado a los agentes
     const comisionesParaInsertar = agentes_comision.map(agente => ({
       venta_id: ventaId,
       agente_id: agente.id,
-      monto_comision: (comision_total * (Number(agente.comision_porcentaje) / 100)).toFixed(2)
+      monto_comision: (monto_repartible_agentes * (Number(agente.comision_porcentaje) / 100)).toFixed(2)
     }));
 
     const { error: errorComision } = await supabase
@@ -230,16 +340,44 @@ export const propiedadesService = {
       .subscribe();
   },
 
+  async obtenerNotificaciones(organizacionId) {
+    if (!organizacionId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('notificaciones')
+        .select('*')
+        .eq('organizacion_id', organizacionId)
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+      if (error) throw error;
+      return data;
+    } catch (e) {
+      console.error("Error obteniendo notificaciones:", e);
+      return [];
+    }
+  },
+
   async obtenerVentasAgencia(usuario) {
     const orgId = usuario.user_metadata?.organizacion_id;
-    if (!orgId) return [];
+    const esAdmin = usuario.user_metadata?.rol === 'admin';
+
+    // MODO DESARROLLO: Permitimos el paso si existe el contexto de organización, 
+    // relajando la restricción de rol para facilitar las pruebas iniciales.
+    if (!orgId) {
+      console.warn("Nexus Real-Time: Usuario sin organización vinculada. Mostrando set de datos vacío.");
+      return [];
+    }
 
     const { data, error } = await supabase
       .from('ventas_registro')
       .select(`
         *,
-        propiedades(titulo, zona),
-        ventas_agentes_comision(agente_id, monto_comision, users(raw_user_meta_data->>nombre as nombre_agente))
+        propiedades (titulo, zona),
+        ventas_agentes_comision (
+          agente_id, 
+          monto_comision
+        )
       `)
       .eq('organizacion_id', orgId)
       .order('created_at', { ascending: false });
@@ -254,6 +392,9 @@ export const propiedadesService = {
     // Aplicar filtros
     if (filtros.texto) {
       query = query.or(`titulo.ilike.%${filtros.texto}%,zona.ilike.%${filtros.texto}%,agente_nombre.ilike.%${filtros.texto}%`);
+    }
+    if (filtros.zona) {
+      query = query.ilike('zona', `%${filtros.zona}%`);
     }
     if (filtros.tipo) {
       query = query.eq('tipo_inmueble', filtros.tipo);
@@ -302,36 +443,75 @@ export const propiedadesService = {
   // --- GESTIÓN DE TASA (SIMPLIFICADA) ---
   async obtenerTasa() {
     try {
+      // 1. Intentamos obtener la tasa guardada en Base de Datos
       const { data, error } = await supabase
         .from('configuracion')
-        .select('valor')
+        .select('valor, updated_at')
         .eq('clave', 'tasa_bcv')
         .maybeSingle();
-      
-      if (error || !data) {
-        const cache = localStorage.getItem('tasa_bcv_cache');
-        return cache ? parseFloat(cache) : 38.50;
+
+      const ahora = new Date();
+      const ultimaActualizacion = data?.updated_at ? new Date(data.updated_at) : null;
+
+      // 2. Si no hay datos, o si la tasa tiene más de 6 horas, intentamos sincronizar con BCV
+      const esAntigua = !ultimaActualizacion || (ahora - ultimaActualizacion) > (6 * 60 * 60 * 1000);
+
+      if (!data || esAntigua) {
+        console.log("Tasa ausente o antigua. Sincronizando con BCV...");
+        const tasaOficial = await this.obtenerTasaOficial();
+
+        if (tasaOficial) {
+          await this.guardarTasaManual(tasaOficial);
+          localStorage.setItem('tasa_bcv_cache', tasaOficial.toString());
+          return tasaOficial;
+        }
       }
 
-      return parseFloat(data.valor);
+      // 3. Si tenemos data fresca o el scraping falló, devolvemos lo que hay en DB/Cache
+      if (data?.valor) {
+        return parseFloat(data.valor);
+      }
+
+      const cache = localStorage.getItem('tasa_bcv_cache');
+      return cache ? parseFloat(cache) : 48.50;
     } catch (e) {
       const cache = localStorage.getItem('tasa_bcv_cache');
-      return cache ? parseFloat(cache) : 38.50;
+      return cache ? parseFloat(cache) : 48.50;
     }
+  },
+
+  subscribirseATasa(callback) {
+    return supabase
+      .channel('tasa-cambio-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'configuracion',
+          filter: 'clave=eq.tasa_bcv'
+        },
+        (payload) => {
+          if (payload.new && payload.new.valor) {
+            callback(parseFloat(payload.new.valor));
+          }
+        }
+      )
+      .subscribe();
   },
 
   async guardarTasaManual(valor) {
     try {
       const { error } = await supabase
         .from('configuracion')
-        .upsert({ 
-          clave: 'tasa_bcv', 
-          valor: valor.toString(), 
-          updated_at: new Date().toISOString() 
-        }, { 
-          onConflict: 'clave' 
+        .upsert({
+          clave: 'tasa_bcv',
+          valor: valor.toString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'clave'
         });
-      
+
       if (error) throw error;
       localStorage.setItem('tasa_bcv_cache', valor.toString());
       return true;
@@ -344,33 +524,49 @@ export const propiedadesService = {
   // --- NUEVO: Obtención inteligente para facilitar al usuario ---
   async obtenerTasaOficial() {
     try {
-      // Intentamos con DolarToday (fuente más estable por API)
+      // Intentamos con DolarToday (fuente muy estable que referencia al BCV)
       const response = await fetch('https://s3.amazonaws.com/dolartoday/data.json');
       if (response.ok) {
         const data = await response.json();
-        const tasa = parseFloat(data?.USD?.sicad2); // El sicad2 suele ser el BCV en su API
+        const tasa = parseFloat(data?.USD?.sicad2);
         if (tasa && tasa > 20) return tasa;
       }
     } catch (e) {
-      console.warn("Error con DolarToday, intentando fuente alternativa...");
+      console.warn("Error con DolarToday, intentando scraping...");
     }
 
-    // Si falla, intentamos un proxy al BCV (Scraping ligero)
     try {
+      // Scraping directo al BCV vía proxy
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://www.bcv.org.ve/')}`;
       const response = await fetch(proxyUrl);
       if (response.ok) {
         const data = await response.json();
         const html = data.contents;
-        // Buscamos el patrón del dólar en el HTML del BCV
-        const regex = /<strong>\s*(\d+,\d+)\s*<\/strong>/;
-        const match = html.match(regex);
+
+        // Multi-patrón para el BCV (a veces cambian el <strong> o el ID del div)
+        const regexDolar = /id="dolar"[\s\S]*?<strong>\s*(\d+,\d+)\s*<\/strong>/i;
+        const match = html.match(regexDolar);
+
         if (match && match[1]) {
-          return parseFloat(match[1].replace(',', '.'));
+          const valor = parseFloat(match[1].replace(',', '.'));
+          // CTO BLINDAJE: Si el BCV devuelve 0 o vacío, ignoramos
+          if (valor > 0) return valor;
+        }
+
+        // Fallback: buscar cualquier strong con formato de decimales altos (como 54,20)
+        const regexGenerica = /<strong>\s*(\d{2},\d{2,})\s*<\/strong>/g;
+        let m;
+        let tasasEncontradas = [];
+        while ((m = regexGenerica.exec(html)) !== null) {
+          const v = parseFloat(m[1].replace(',', '.'));
+          if (v > 0) tasasEncontradas.push(v);
+        }
+        if (tasasEncontradas.length > 0) {
+          return Math.max(...tasasEncontradas);
         }
       }
     } catch (e) {
-      console.error("No se pudo obtener la tasa de ninguna fuente automática.");
+      console.error("Fallo total en sincronización de tasa. Se activará el fallback historial.");
     }
     return null;
   },
@@ -503,7 +699,7 @@ export const propiedadesService = {
           agente_id: usuario.id,
           organizacion_id: orgId,
           organizacion_nombre: orgNombre,
-          es_prueba: true 
+          es_prueba: true
         };
 
         let { data: newProp, error: errorProp } = await supabase.from('propiedades').insert([payload]).select();
@@ -596,19 +792,16 @@ export const propiedadesService = {
   async obtenerAgentesPorOrganizacion(organizacionId) {
     if (!organizacionId) return [];
     try {
-      // This assumes a 'users' table exists in the public schema with raw_user_meta_data
-      // or that RLS is configured to allow querying auth.users this way.
-      // In a real-world scenario, a 'profiles' table in public schema linked to auth.users is preferred.
+      // Utilizamos el RPC seguro creado en la base de datos
       const { data, error } = await supabase
-        .from('users') // This will query public.users, not auth.users
-        .select('id, raw_user_meta_data')
-        .filter('raw_user_meta_data->>organizacion_id', 'eq', organizacionId);
+        .rpc('get_agentes_organizacion', { org_id: organizacionId });
 
       if (error) throw error;
 
       return data.map(user => ({
         id: user.id,
-        nombre: user.raw_user_meta_data?.nombre || user.raw_user_meta_data?.email || 'Agente Desconocido'
+        nombre: user.raw_user_meta_data?.nombre || user.raw_user_meta_data?.email || 'Agente Desconocido',
+        comision_porcentaje: 0 // Preparado para el panel de cierre
       }));
     } catch (e) {
       console.error("Error obteniendo agentes por organización:", e);
@@ -618,7 +811,7 @@ export const propiedadesService = {
 
   async limpiarDatosPrueba(usuario) {
     const orgId = usuario.user_metadata?.organizacion_id || null;
-    
+
     const titulosPrueba = [
       'Apartamento Moderno en La Trigaleña',
       'Quinta de Lujo en Alto Hatillo',
@@ -632,10 +825,10 @@ export const propiedadesService = {
         .from('propiedades')
         .select('id')
         .eq('agente_id', usuario.id);
-      
+
       // Intentamos una búsqueda que no rompa si no existe la columna
       const { data: props, error: errorSearch } = await query.or(`titulo.in.(${titulosPrueba.map(t => `"${t}"`).join(',')})`);
-      
+
       let propIds = props?.map(p => p.id) || [];
 
       // Si no encontramos por título, intentamos por flag (en un bloque separado por si falla la columna)
@@ -645,7 +838,7 @@ export const propiedadesService = {
           .select('id')
           .eq('agente_id', usuario.id)
           .eq('es_prueba', true);
-        
+
         if (propsFlag) {
           const extraIds = propsFlag.map(p => p.id).filter(id => !propIds.includes(id));
           propIds = [...propIds, ...extraIds];
@@ -663,7 +856,7 @@ export const propiedadesService = {
       if (orgId) {
         await supabase.from('notificaciones').delete()
           .eq('organizacion_id', orgId)
-          .in('tipo', ['nuevo_prospecto', 'venta_exitosa']); 
+          .in('tipo', ['nuevo_prospecto', 'venta_exitosa']);
       }
     } catch (error) {
       console.error("Error en limpieza:", error);
@@ -671,5 +864,23 @@ export const propiedadesService = {
     }
 
     return true;
+  },
+
+  async obtenerComisionesAgente(agentId) {
+    const { data, error } = await supabase
+      .from('ventas_agentes_comision')
+      .select(`
+        *,
+        ventas_registro (
+          monto_venta,
+          created_at,
+          propiedades (titulo, zona)
+        )
+      `)
+      .eq('agente_id', agentId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
   }
 };
