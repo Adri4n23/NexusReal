@@ -55,7 +55,7 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
 
   return (
     <div
-      className="group relative transition-transform duration-300 hover:-translate-y-2 cursor-pointer w-full max-w-[320px] mx-auto"
+      className="group relative transition-all duration-500 hover:-translate-y-3 cursor-pointer w-full max-w-[320px] mx-auto"
       onClick={() => navigate(`/propiedad/${propiedad.id}`)}
     >
       {/* MODAL CIERRE PROFESIONAL */}
@@ -157,25 +157,28 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
         </div>
       )}
 
-      {/* FORMA DE ETIQUETA / TAG (Estilo Mockup) */}
-      <div className="relative overflow-hidden rounded-[40px] shadow-2xl flex flex-col h-[480px]">
-        {/* Parte Superior: Paisaje con Agujero */}
-        <div className="relative h-2/5 bg-gradient-to-b from-blue-50 to-blue-200">
-          <div className="absolute inset-0 flex items-start justify-center pt-2">
-            <div className="w-12 h-6 bg-slate-50/50 rounded-full border border-white/50 backdrop-blur-sm relative overflow-hidden">
-              <div className="absolute inset-1 bg-white rounded-full shadow-inner opacity-20"></div>
-            </div>
+      {/* Cuerpo de la Tarjeta */}
+      <div className="relative overflow-hidden rounded-[40px] shadow-2xl flex flex-col h-[500px] bg-white border border-slate-100 transition-all duration-500 group-hover:ring-4 group-hover:ring-blue-400/30 group-hover:shadow-[0_20px_50px_rgba(0,66,157,0.1)]">
+        {/* Parte Superior: Imagen (Más Grande) */}
+        <div className="relative h-1/2 overflow-hidden">
+          <BlurUpImage
+            src={fotoActual}
+            alt={propiedad.titulo}
+            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
+          />
+          <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-all"></div>
+
+          {/* Marca de Agua Premium (Reposicionada y más sutil) */}
+          <div className="absolute bottom-6 right-8 pointer-events-none opacity-15">
+            <span className="text-white text-2xl font-black tracking-[0.4em] uppercase leading-none drop-shadow-2xl">
+              NEXUSREAL
+            </span>
           </div>
 
-          <BlurUpImage src={fotoActual} alt={propiedad.titulo} className="w-full h-full opacity-80" />
-
-          {/* Ondas Verdes (Mockup style) */}
+          {/* Ondas Decorativas (Minimalistas) */}
           <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-none">
-            <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="relative block w-full h-[60px] fill-[#7da62e]">
+            <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="relative block w-full h-[15px] fill-[#7da62e] opacity-90">
               <path d="M0,0 C150,90 400,0 600,60 C800,120 1050,30 1200,90 L1200,120 L0,120 Z"></path>
-            </svg>
-            <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-[40px] fill-[#2e5d1a] opacity-80">
-              <path d="M0,60 C200,120 500,0 800,90 C1000,150 1200,60 1200,60 L1200,120 L0,120 Z"></path>
             </svg>
           </div>
         </div>
@@ -192,18 +195,18 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
               <span>{propiedad.zona}</span>
             </div>
 
-            <div className="flex justify-center gap-4 py-3 border-y border-white/20 w-full">
-              <div className="text-white flex flex-col items-center">
-                <Bed size={16} className="text-blue-100 mb-1" />
-                <span className="text-[10px] font-black uppercase tracking-widest">{propiedad.habitaciones}</span>
+            <div className="flex justify-center gap-6 py-4 border-y border-white/20 w-full bg-white/5 rounded-2xl backdrop-blur-sm">
+              <div className="text-white flex flex-col items-center group/icon">
+                <Bed size={20} className="text-white mb-1 group-hover/icon:scale-110 transition-transform" />
+                <span className="text-[11px] font-black uppercase tracking-widest">{propiedad.habitaciones}</span>
               </div>
-              <div className="text-white flex flex-col items-center">
-                <Bath size={16} className="text-blue-100 mb-1" />
-                <span className="text-[10px] font-black uppercase tracking-widest">{propiedad.banos}</span>
+              <div className="text-white flex flex-col items-center group/icon">
+                <Bath size={20} className="text-white mb-1 group-hover/icon:scale-110 transition-transform" />
+                <span className="text-[11px] font-black uppercase tracking-widest">{propiedad.banos}</span>
               </div>
-              <div className="text-white flex flex-col items-center">
-                <Ruler size={16} className="text-blue-100 mb-1" />
-                <span className="text-[10px] font-black uppercase tracking-widest">{propiedad.metraje}m²</span>
+              <div className="text-white flex flex-col items-center group/icon">
+                <Ruler size={20} className="text-white mb-1 group-hover/icon:scale-110 transition-transform" />
+                <span className="text-[11px] font-black uppercase tracking-widest">{propiedad.metraje}m²</span>
               </div>
             </div>
           </div>
@@ -215,8 +218,8 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
             </div>
 
             <div className="flex gap-2">
-              <button className="flex-1 bg-white text-[#004aad] rounded-2xl py-3 font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 transition-all flex items-center justify-center gap-2">
-                Detalles <ArrowRight size={14} />
+              <button className="flex-1 bg-green-500 text-white rounded-2xl py-3 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 group/btn">
+                Detalles <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
               {propiedad.agente_id === usuarioActual?.id && propiedad.estado !== 'vendido' && (
                 <button

@@ -11,7 +11,7 @@ import {
     Filter,
     Download,
     Briefcase,
-    PieChart,
+    PieChart as PieChartIcon,
     ChevronRight,
     Loader2,
     AlertCircle,
@@ -21,11 +21,26 @@ import {
     UserPlus,
     UserMinus,
     Check,
-    Zap
+    Zap,
+    Lock
 } from 'lucide-react';
+import {
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    PieChart,
+    Pie,
+    Cell,
+    BarChart,
+    Bar
+} from 'recharts';
 import { Facturacion } from './Facturacion';
 
-function AdminDashboard({ session, onNotificar }) {
+function AdminDashboard({ session, onNotificar, licencia }) {
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState('accounting'); // 'accounting' | 'billing' | 'team'
     const [ventas, setVentas] = useState([]);
@@ -80,7 +95,37 @@ function AdminDashboard({ session, onNotificar }) {
         }
     };
 
+    // Lógica para transformar datos para los gráficos
+    const getDatosGraficoVentas = () => {
+        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const datos = meses.map(mes => ({ name: mes, ingresos: 0 }));
+
+        ventas.forEach(v => {
+            const fecha = new Date(v.created_at);
+            const mesIdx = fecha.getMonth();
+            datos[mesIdx].ingresos += Number(v.monto_venta || 0);
+        });
+
+        // Filtrar meses sin datos si se prefiere, o mostrar tendencia anual
+        return datos;
+    };
+
+    const getDatosGraficoTipos = () => {
+        const tipos = {};
+        ventas.forEach(v => {
+            const tipo = v.propiedades?.tipo_inmueble || 'Otro';
+            tipos[tipo] = (tipos[tipo] || 0) + 1;
+        });
+        return Object.entries(tipos).map(([name, value]) => ({ name, value }));
+    };
+
+    const COLORS = ['#00429d', '#2563eb', '#60a5fa', '#93c5fd', '#bfdbfe'];
+
     const exportarPDF = async () => {
+        if (licencia?.status !== 'active') {
+            onNotificar?.("Función Pro: Requiere suscripción activa para exportar reportes.", "error");
+            return;
+        }
         try {
             onNotificar?.("Generando reporte financiero...", "success");
             const doc = new window.jspdf.jsPDF();
@@ -181,28 +226,158 @@ function AdminDashboard({ session, onNotificar }) {
 
                 {view === 'accounting' && (
                     <div className="animate-in fade-in duration-700">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
-                            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5 relative overflow-hidden group">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Volumen Total</p>
-                                <h3 className="text-3xl font-bold font-mono text-slate-800">${estadisticas.totalIngresos.toLocaleString()}</h3>
-                                <div className="mt-6 flex items-center gap-2 text-green-600 font-black text-[10px] bg-green-50 w-fit px-3 py-1 rounded-full uppercase tracking-widest">
-                                    <ArrowUpRight size={14} /> +12.5%
+                        {/* SECCIÓN DE GRÁFICOS ANALÍTICOS */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12">
+                            {/* Gráfico de Tendencia de Ingresos */}
+                            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-sm font-black uppercase tracking-tight text-slate-800 flex items-center gap-2">
+                                        <TrendingUp size={18} className="text-blue-600" />
+                                        Tendencia de Ingresos
+                                    </h3>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Anual ($)</span>
+                                </div>
+                                <div className="h-[300px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={getDatosGraficoVentas()}>
+                                            <defs>
+                                                <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} tickFormatter={(v) => `$${v / 1000}k`} />
+                                            <Tooltip
+                                                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '15px' }}
+                                                itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                                            />
+                                            <Area type="monotone" dataKey="ingresos" stroke="#2563eb" strokeWidth={4} fillOpacity={1} fill="url(#colorIngresos)" />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
-                            <div className="bg-blue-600 p-8 rounded-[40px] border border-blue-600 shadow-2xl shadow-blue-600/30 relative overflow-hidden">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Agencia (30%)</p>
-                                <h3 className="text-3xl font-bold font-mono text-white">${estadisticas.comisionAgencia.toLocaleString()}</h3>
-                                <p className="text-[10px] text-blue-100 mt-6 font-black uppercase tracking-widest opacity-60 italic">Operatividad Neta</p>
-                            </div>
+
+                            {/* Gráfico de Distribución por Tipo */}
                             <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Pool Agentes (70%)</p>
-                                <h3 className="text-3xl font-bold font-mono text-blue-600">${estadisticas.poolAgentes.toLocaleString()}</h3>
-                                <p className="text-[10px] text-slate-400 mt-6 font-black uppercase tracking-widest opacity-60 italic">Monto Repartido</p>
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-sm font-black uppercase tracking-tight text-slate-800 flex items-center gap-2">
+                                        <PieChartIcon size={18} className="text-blue-600" />
+                                        Distribución de Cierres
+                                    </h3>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Por Tipo</span>
+                                </div>
+                                <div className="h-[300px] w-full flex items-center">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={getDatosGraficoTipos()}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={100}
+                                                paddingAngle={8}
+                                                dataKey="value"
+                                            >
+                                                {getDatosGraficoTipos().map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} cornerRadius={10} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '15px' }}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="w-1/3 flex flex-col gap-3">
+                                        {getDatosGraficoTipos().map((entry, index) => (
+                                            <div key={index} className="flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                                                <span className="text-[10px] font-black text-slate-600 uppercase truncate">{entry.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Cierres</p>
-                                <h3 className="text-3xl font-bold font-mono text-slate-800">{estadisticas.conteoVentas}</h3>
-                                <p className="text-[10px] text-slate-400 mt-6 font-black uppercase tracking-widest opacity-60 italic text-blue-600">{estadisticas.prospectosTotales} Leads Activos</p>
+                        </div>
+
+                        {/* WIDGET BALANCE DE COMISIONES - GLASSMORPHISM ADJUSTED */}
+                        <div className="relative overflow-hidden bg-white/20 backdrop-blur-md rounded-[50px] p-12 border border-white/30 shadow-2xl shadow-blue-900/10 mb-12 group transition-all hover:bg-white/30">
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Building2 size={120} className="text-blue-900" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-12">
+                                <div className="space-y-4 text-center lg:text-left">
+                                    <h2 className="text-xs font-black uppercase tracking-[0.4em] text-blue-600 mb-2">Balance de Comisiones</h2>
+                                    <div className="flex flex-col">
+                                        <span className="text-6xl font-black text-slate-900 tracking-tighter">
+                                            ${estadisticas.totalIngresos.toLocaleString()}
+                                        </span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">Total Facturado Bruto</span>
+                                    </div>
+                                </div>
+
+                                <div className="h-20 w-[1px] bg-slate-200 hidden lg:block"></div>
+
+                                <div className="flex flex-wrap justify-center gap-10">
+                                    <div className="text-center lg:text-left">
+                                        <div className="flex items-center gap-2 mb-2 justify-center lg:justify-start">
+                                            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Agencia (30%)</span>
+                                        </div>
+                                        <p className="text-3xl font-bold text-slate-900">${estadisticas.comisionAgencia.toLocaleString()}</p>
+                                        <p className="text-[9px] font-black text-blue-600 uppercase mt-1">Ganancia Neta</p>
+                                    </div>
+
+                                    <div className="text-center lg:text-left">
+                                        <div className="flex items-center gap-2 mb-2 justify-center lg:justify-start">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Pool Agentes (70%)</span>
+                                        </div>
+                                        <p className="text-3xl font-bold text-slate-900">${estadisticas.poolAgentes.toLocaleString()}</p>
+                                        <p className="text-[9px] font-black text-green-600 uppercase mt-1">Monto a Repartir</p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={exportarPDF}
+                                    className={`px-8 py-5 rounded-[25px] font-black text-[11px] uppercase tracking-widest transition-all flex items-center gap-2 ${licencia?.status === 'active' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30 hover:bg-blue-700 hover:scale-105' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                                >
+                                    {licencia?.status === 'active' ? <Download size={16} /> : <Lock size={16} />}
+                                    Descargar Corte
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
+                            <div className="bg-white/70 p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5 relative overflow-hidden group">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Inventario Total</p>
+                                <h3 className="text-3xl font-bold font-mono text-slate-800">{estadisticas.prospectosTotales + 12}</h3> {/* Placeholder logic for assets */}
+                                <div className="mt-6 flex items-center gap-2 text-blue-600 font-black text-[10px] bg-blue-50 w-fit px-3 py-1 rounded-full uppercase tracking-widest">
+                                    <Building2 size={14} /> Unidades Nexus
+                                </div>
+                            </div>
+                            <div className="bg-white/70 p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5 relative overflow-hidden">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Volumen de Ventas</p>
+                                <h3 className="text-3xl font-bold font-mono text-slate-800">${estadisticas.totalIngresos.toLocaleString()}</h3>
+                                <div className="mt-6 flex items-center gap-2 text-green-600 font-black text-[10px] bg-green-50 w-fit px-3 py-1 rounded-full uppercase tracking-widest">
+                                    <DollarSign size={14} /> Total Cobrado
+                                </div>
+                            </div>
+                            <div className="bg-white/70 p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Equipo Activo</p>
+                                <h3 className="text-3xl font-bold font-mono text-blue-600">{agentes.length}</h3>
+                                <div className="mt-6 flex items-center gap-2 text-blue-600 font-black text-[10px] bg-blue-50 w-fit px-3 py-1 rounded-full uppercase tracking-widest">
+                                    <Users size={14} /> Agentes
+                                </div>
+                            </div>
+                            <div className="bg-white/70 p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-blue-900/5">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Estado Premium</p>
+                                <h3 className="text-3xl font-bold font-mono text-green-600">ACTIVO</h3>
+                                <div className="mt-6 flex items-center gap-2 text-green-600 font-black text-[10px] bg-green-50 w-fit px-3 py-1 rounded-full uppercase tracking-widest">
+                                    <Zap size={14} /> Nexus PRO
+                                </div>
                             </div>
                         </div>
 
@@ -255,8 +430,8 @@ function AdminDashboard({ session, onNotificar }) {
                                             return (
                                                 <div key={notif.id} className="flex gap-4 group">
                                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all ${isVenta ? 'bg-green-100 text-green-600 group-hover:bg-green-600 group-hover:text-white' :
-                                                            isPago ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' :
-                                                                'bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+                                                        isPago ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' :
+                                                            'bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
                                                         }`}>
                                                         {isVenta ? <Zap size={18} /> : isPago ? <DollarSign size={18} /> : <CreditCard size={18} />}
                                                     </div>

@@ -9,7 +9,8 @@ import Inicio from './components/Inicio.jsx';
 import DetallePropiedad from './components/DetallePropiedad.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
 import { MiBolsillo } from './components/MiBolsillo.jsx';
-import { ShieldAlert, Loader2 } from 'lucide-react';
+import { ShieldAlert, Loader2, Lock, FileText } from 'lucide-react';
+import { Facturacion } from './components/Facturacion.jsx';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -106,22 +107,20 @@ function App() {
     );
   }
 
-  if (session && !licencia.activa) {
+  if (session && licencia.bloqueado) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6 text-center">
-        <div className="max-w-md bg-white rounded-[40px] p-10 shadow-2xl shadow-blue-900/10 border-t-8 border-red-500">
-          <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <ShieldAlert size={40} className="text-red-500" />
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+        <div className="w-full max-w-5xl">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[50px] p-12 mb-8 text-center">
+            <h2 className="text-4xl font-serif text-white mb-4">Suscripción <span className="text-blue-500">Expirada</span></h2>
+            <p className="text-slate-400 font-medium mb-12 max-w-xl mx-auto">{licencia.mensaje}</p>
+            <Facturacion session={session} onNotificar={mostrarNotificacion} />
           </div>
-          <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase">Acceso Restringido</h2>
-          <p className="text-slate-600 font-medium mb-8 leading-relaxed">
-            {licencia.mensaje}
-          </p>
           <button
             onClick={() => supabase.auth.signOut()}
-            className="w-full py-4 bg-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-200 transition-all uppercase text-xs tracking-widest"
+            className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.5em] block mx-auto hover:text-white transition-all"
           >
-            Cerrar Sesión
+            ← Desconectarse
           </button>
         </div>
       </div>
@@ -148,9 +147,9 @@ function App() {
           />
 
           <Routes>
-            <Route path="/" element={<Inicio session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} setTasaBCV={setTasaBCV} />} />
+            <Route path="/" element={<Inicio session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} setTasaBCV={setTasaBCV} licencia={licencia} />} />
             <Route path="/propiedad/:id" element={<DetallePropiedad session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} />} />
-            <Route path="/dashboard" element={<AdminDashboard session={session} onNotificar={mostrarNotificacion} />} />
+            <Route path="/dashboard" element={<AdminDashboard session={session} onNotificar={mostrarNotificacion} licencia={licencia} />} />
             <Route path="/bolsillo" element={
               <div className="pt-32 pb-20 px-6 max-w-xl mx-auto">
                 <MiBolsillo session={session} onNotificar={mostrarNotificacion} />

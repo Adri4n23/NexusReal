@@ -11,8 +11,9 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar, alBuscar, alBuscarZ
   const [nuevaTasa, setNuevaTasa] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [zona, setZona] = useState('');
+  const [busquedaMovilAbierta, setBusquedaMovilAbierta] = useState(false);
 
-  const esAdmin = usuario?.user_metadata?.rol === 'admin';
+  const esAdmin = usuario?.user_metadata?.rol === 'owner' || usuario?.user_metadata?.rol === 'superadmin';
 
   useEffect(() => {
     if (mostrarModalTasa && tasaBCV) {
@@ -120,68 +121,84 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar, alBuscar, alBuscarZ
             </Link>
 
             {/* CENTRO: BUSCADOR DUAL (Keywords + Zona) */}
-            <div className="flex-1 max-w-3xl w-full flex bg-white rounded-2xl shadow-inner border-2 border-transparent focus-within:border-blue-300 overflow-hidden transition-all">
-              <div className="flex-1 relative border-r border-slate-100">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">
-                  <Search size={16} />
+            <div className={`${busquedaMovilAbierta ? 'flex absolute inset-x-0 top-0 h-full z-[60] bg-[#00429d] p-6' : 'hidden'} md:flex flex-1 max-w-4xl w-full flex bg-white rounded-full shadow-inner border-2 border-transparent focus-within:border-blue-300 overflow-hidden transition-all duration-500`}>
+              <div className="flex-1 relative border-r border-slate-100 flex items-center">
+                <div className="absolute left-6 text-slate-300">
+                  <Search size={18} />
                 </div>
                 <input
                   type="text"
                   placeholder="Ej: Penthouse, Casa..."
                   value={busqueda}
                   onChange={handleSearchChange}
-                  className="w-full py-2.5 pl-12 pr-4 outline-none text-slate-700 font-medium text-sm placeholder:text-slate-300"
+                  className="w-full py-4 pl-14 pr-4 outline-none text-slate-800 font-bold text-sm placeholder:text-slate-300 bg-transparent"
                 />
               </div>
-              <div className="flex-1 relative bg-slate-50/50">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-600">
-                  <MapPin size={16} />
+              <div className="flex-1 relative bg-slate-50/50 flex items-center">
+                <div className="absolute left-6 text-blue-600">
+                  <MapPin size={18} />
                 </div>
                 <input
                   type="text"
                   placeholder="Zona o Ciudad..."
                   value={zona}
                   onChange={handleZonaChange}
-                  className="w-full py-2.5 pl-12 pr-10 outline-none text-slate-700 font-bold text-sm bg-transparent placeholder:text-slate-300"
+                  className="w-full py-4 pl-14 pr-12 outline-none text-slate-800 font-bold text-sm bg-transparent placeholder:text-slate-300"
                 />
                 {zona && (
-                  <button onClick={limpiarZona} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 p-1">
-                    <X size={14} />
+                  <button onClick={limpiarZona} className="absolute right-4 text-slate-300 hover:text-slate-600 p-2">
+                    <X size={16} />
                   </button>
                 )}
               </div>
+              {busquedaMovilAbierta && (
+                <button onClick={() => setBusquedaMovilAbierta(false)} className="md:hidden bg-blue-600 text-white p-4 rounded-full ml-2">
+                  <X size={20} />
+                </button>
+              )}
             </div>
 
             {/* LADO DERECHO: ACCIONES */}
-            <div className="flex items-center gap-3">
-              <div className="hidden lg:block">
+            <div className="flex items-center gap-2 md:gap-3">
+              <button
+                onClick={() => setBusquedaMovilAbierta(true)}
+                className="md:hidden p-3 bg-white/10 rounded-full text-white"
+              >
+                <Search size={22} />
+              </button>
+
+              <div className="hidden lg:flex items-center gap-2">
                 <TasaBCV tasa={tasaBCV} />
+                {esAdmin && (
+                  <button
+                    onClick={() => setMostrarModalTasa(true)}
+                    className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all border border-white/20 group"
+                    title="Ajustar Tasa"
+                  >
+                    <Edit3 size={14} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                )}
               </div>
 
               <Link to="/bolsillo" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Mis Ganancias">
                 <Wallet size={20} />
               </Link>
 
-              {/* Botón de Publicar en Navbar */}
+              {/* BOTÓN PRIMARIO: PUBLICAR (UNIFICADO) */}
               {onPublicar && (
                 <button
                   onClick={onPublicar}
-                  className="hidden md:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all shadow-lg shadow-blue-600/20"
+                  className="hidden md:flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-2xl transition-all shadow-[0_10px_20px_rgba(37,99,235,0.3)] hover:shadow-[0_15px_30px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 active:translate-y-0"
                 >
-                  <PlusCircle size={18} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Publicar</span>
+                  <PlusCircle size={20} className="stroke-[3px]" />
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em]">Publicar Propiedad</span>
                 </button>
               )}
 
               {esAdmin && (
-                <>
-                  <Link to="/dashboard" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Panel de Control">
-                    <LayoutDashboard size={20} />
-                  </Link>
-                  <button onClick={() => setMostrarModalTasa(true)} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Ajustar Tasa">
-                    <Edit3 size={18} />
-                  </button>
-                </>
+                <Link to="/dashboard" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Panel de Control">
+                  <LayoutDashboard size={20} />
+                </Link>
               )}
 
               <button

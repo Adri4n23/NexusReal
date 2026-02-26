@@ -14,14 +14,17 @@ import {
   Home,
   Tag,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 import { propiedadesService } from '../propiedadesService';
+import { SkeletonCard } from './SkeletonCard.jsx';
 
-function Inicio({ session, onNotificar, tasaBCV, setTasaBCV }) {
+function Inicio({ session, onNotificar, tasaBCV, setTasaBCV, licencia }) {
   const [propiedades, setPropiedades] = useState([]);
   const [mostrarModalPublicar, setMostrarModalPublicar] = useState(false);
   const [mostrarImportadorMasivo, setMostrarImportadorMasivo] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [filtros, setFiltros] = useState({
     texto: '',
@@ -37,10 +40,13 @@ function Inicio({ session, onNotificar, tasaBCV, setTasaBCV }) {
 
   async function fetchPropiedades() {
     try {
+      setLoading(true);
       const data = await propiedadesService.obtenerPropiedades(session?.user, filtros);
       setPropiedades(data || []);
     } catch (error) {
       onNotificar?.('Error al cargar propiedades', 'error');
+    } finally {
+      setTimeout(() => setLoading(false), 800); // Pequeño delay para apreciar el shimmer
     }
   }
 
@@ -69,15 +75,15 @@ function Inicio({ session, onNotificar, tasaBCV, setTasaBCV }) {
         <div className="container mx-auto">
 
           {/* QUICK FILTERS BAR */}
-          <div className="flex flex-wrap items-center gap-4 mb-12 pb-8 border-b border-slate-100">
-            <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner">
+          <div className="flex flex-wrap items-center gap-6 mb-12 pb-10 border-b border-slate-100/50">
+            <div className="flex bg-slate-50 p-2 rounded-full border border-slate-100">
               {['', 'Venta', 'Alquiler'].map((op) => (
                 <button
                   key={op}
                   onClick={() => setFiltros(prev => ({ ...prev, operacion: op }))}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${(filtros.operacion === op) || (!op && !filtros.operacion)
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-slate-400 hover:text-slate-600'
+                  className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300 ${(filtros.operacion === op) || (!op && !filtros.operacion)
+                    ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 scale-105'
+                    : 'text-slate-400 hover:text-slate-800'
                     }`}
                 >
                   {op || 'Todo'}
@@ -85,36 +91,46 @@ function Inicio({ session, onNotificar, tasaBCV, setTasaBCV }) {
               ))}
             </div>
 
-            <div className="h-8 w-[1px] bg-slate-200 hidden md:block"></div>
+            <div className="h-8 w-[1px] bg-slate-200/50 hidden md:block mx-2"></div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
               {['', 'Apartamento', 'Casa', 'Local', 'Terreno'].map((tipo) => (
                 <button
                   key={tipo}
                   onClick={() => setFiltros(prev => ({ ...prev, tipo }))}
-                  className={`px-5 py-2.5 border-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${(filtros.tipo === tipo) || (!tipo && !filtros.tipo)
-                    ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-sm'
-                    : 'border-slate-50 bg-slate-50 text-slate-400 hover:border-slate-200 hover:text-slate-600'
+                  className={`px-6 py-3 border-2 rounded-full text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${(filtros.tipo === tipo) || (!tipo && !filtros.tipo)
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-lg shadow-blue-600/10'
+                    : 'border-slate-100 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-800'
                     }`}
                 >
-                  {tipo || 'Todos los Tipos'}
+                  {tipo || 'Todos'}
                 </button>
               ))}
             </div>
 
             <div className="ml-auto">
               <button
-                onClick={() => setMostrarImportadorMasivo(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-[#00429d] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                onClick={() => {
+                  if (licencia?.status === 'active') {
+                    setMostrarImportadorMasivo(true);
+                  } else {
+                    onNotificar?.("Función Pro: La Importación Masiva requiere suscripción activa.", "error");
+                  }
+                }}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${licencia?.status === 'active' ? 'bg-blue-50 hover:bg-blue-100 text-[#00429d]' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
               >
-                <FileSpreadsheet size={16} />
+                {licencia?.status === 'active' ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
                 Importar Excel
               </button>
             </div>
           </div>
 
           {/* Grid de Propiedades */}
-          {propiedades.length > 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SkeletonCard key={n} />)}
+            </div>
+          ) : propiedades.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
               {propiedades.map(prop => (
                 <CardPropiedad
@@ -138,14 +154,6 @@ function Inicio({ session, onNotificar, tasaBCV, setTasaBCV }) {
         </div>
       </main>
 
-      {/* BOTÓN FLOTANTE: PUBLICAR */}
-      <button
-        onClick={() => setMostrarModalPublicar(true)}
-        className="fixed bottom-10 right-10 bg-blue-600 text-white w-20 h-20 rounded-full flex items-center justify-center shadow-2xl shadow-blue-600/40 hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all z-[100] group"
-        title="Publicar Propiedad"
-      >
-        <PlusCircle size={32} className="group-hover:rotate-90 transition-transform duration-500" />
-      </button>
 
       {/* MODAL DE PUBLICACIÓN */}
       {mostrarModalPublicar && (

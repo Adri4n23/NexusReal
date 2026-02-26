@@ -11,7 +11,7 @@ export function Facturacion({ session, onNotificar }) {
     const planes = [
         {
             nombre: 'Agencia Pro',
-            precio: '49',
+            precio: '30',
             features: ['Agentes Ilimitados', 'CRM de Prospectos', 'Contabilidad 30/70', 'Tasa BCV Automática', 'Exportación PDF'],
             current: true
         }
@@ -25,15 +25,17 @@ export function Facturacion({ session, onNotificar }) {
 
         try {
             setSubiendo(true);
-            // Reutilizamos la lógica de subir foto pero para comprobantes
+            // 1. Subir al Storage
             const publicUrl = await propiedadesService.subirComprobante(archivoComprobante, session.user);
-            console.log("Comprobante subido:", publicUrl);
+
+            // 2. Registrar en la tabla de pagos
+            await propiedadesService.registrarPagoManual(publicUrl, session.user, 30, metodo);
 
             setPagoEnviado(true);
-            onNotificar?.("¡Comprobante enviado! Validaremos tu pago en breve.", "success");
+            onNotificar?.("¡Confirmación recibida! Validaremos tu pago en 15-30 min.", "success");
         } catch (error) {
             console.error(error);
-            onNotificar?.("Error al subir el comprobante", "error");
+            onNotificar?.("Error en el proceso de pago. Intenta de nuevo.", "error");
         } finally {
             setSubiendo(false);
         }
@@ -114,14 +116,21 @@ export function Facturacion({ session, onNotificar }) {
                                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4">Instrucciones de Pago</p>
                                 {metodo === 'pago_movil' ? (
                                     <div className="space-y-2 text-sm font-medium">
-                                        <p>Banco: <span className="text-white font-black">BANCAMIGA (0172)</span></p>
-                                        <p>CI/RIF: <span className="text-white font-black">J-123456789</span></p>
-                                        <p>Teléfono: <span className="text-white font-black">0412-1234567</span></p>
+                                        <p>Banco: <span className="text-white font-black">MERCANTIL (0105)</span></p>
+                                        <p>CI/RIF: <span className="text-white font-black">V-30.506.089</span></p>
+                                        <p>Teléfono: <span className="text-white font-black">0414-5201195</span></p>
+                                        <p className="text-[10px] text-blue-300 mt-2 italic font-bold">Monto: $30 (Tasa BCV del día)</p>
+                                    </div>
+                                ) : metodo === 'zelle' ? (
+                                    <div className="space-y-2 text-sm font-medium">
+                                        <p>Cuenta Zelle: <span className="text-white font-black">pagos@nexusreal.com</span></p>
+                                        <p>Titular: <span className="text-white font-black">Nexus Corporate Group</span></p>
+                                        <p className="text-[10px] text-blue-300 mt-2 italic font-bold">Monto: $30.00 USD</p>
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-3 py-4">
-                                        <Landmark className="text-blue-400" />
-                                        <p className="text-xs text-slate-400">Instrucciones de Zelle enviadas a tu correo administrativo.</p>
+                                        <ShieldCheck className="text-blue-400" />
+                                        <p className="text-xs text-slate-400">Pago automático vía Stripe habilitado. Crédito instantáneo.</p>
                                     </div>
                                 )}
                             </div>
@@ -147,11 +156,11 @@ export function Facturacion({ session, onNotificar }) {
 
                             <button
                                 onClick={manejarEnvioComprobante}
-                                disabled={subiendo || !archivoComprobante}
-                                className={`w-full py-5 rounded-[20px] font-black uppercase text-xs tracking-[0.2em] shadow-xl transition-all flex items-center justify-center gap-3 ${subiendo || !archivoComprobante ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'}`}
+                                disabled={subiendo || !archivoComprobante || metodo === 'card'}
+                                className={`w-full py-5 rounded-[20px] font-black uppercase text-xs tracking-[0.2em] shadow-xl transition-all flex items-center justify-center gap-3 ${subiendo || !archivoComprobante || metodo === 'card' ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'}`}
                             >
-                                {subiendo ? <Loader2 className="animate-spin" /> : <Zap size={18} fill="currentColor" />}
-                                {subiendo ? 'Enviando...' : 'Confirmar y Activar Mes'}
+                                {subiendo ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Zap size={18} fill="currentColor" />}
+                                {subiendo ? 'Subiendo Evidencia...' : metodo === 'card' ? 'Próximamente' : 'Confirmar y Activar'}
                             </button>
                         </div>
                     )}

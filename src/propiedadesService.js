@@ -21,7 +21,7 @@ export const propiedadesService = {
       ...datos,
       agente_nombre: usuario.user_metadata?.nombre || usuario.email,
       agente_id: usuario.id,
-      organizacion_id: orgId,
+      oficina_id: orgId, // Cambiado de organizacion_id
       organizacion_nombre: orgNombre,
       galeria: datos.galeria || []
     }]);
@@ -36,28 +36,17 @@ export const propiedadesService = {
 
     // Mapeamos los datos para añadir la estructura base de NexusReal
     const propiedadesBorrador = arregloDatos.map(item => ({
-      titulo: item.titulo,
-      descripcion: item.descripcion,
-      zona: item.zona,
-      precio: item.precio,
-      habitaciones: item.habitaciones,
-      banos: item.banos,
-      metraje: item.metraje,
-      tipo_inmueble: item.tipo_inmueble,
-      tipo_operacion: item.tipo_operacion,
-      // Metadata extra
+      ...item,
       estado: 'disponible',
       galeria: [],
-      // Usamos unsplash como base si están importando sin fotos, luego las subirán
       imagen_url: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80',
-      whatsapp: usuario.user_metadata?.telefono || '+580000000', // Whatsapp default del agente
+      whatsapp: usuario.user_metadata?.telefono || '+580000000',
       agente_nombre: usuario.user_metadata?.nombre || usuario.email,
       agente_id: usuario.id,
-      organizacion_id: orgId,
+      oficina_id: orgId, // Cambiado de organizacion_id
       organizacion_nombre: orgNombre,
     }));
 
-    // Inserción en lote en Supabase (Bulk Insert)
     const { error } = await supabase.from('propiedades').insert(propiedadesBorrador);
     if (error) throw error;
   },
@@ -149,29 +138,56 @@ export const propiedadesService = {
 
   async subirComprobante(file, usuario) {
     const fileExt = file.name.split('.').pop();
-    const fileName = `pago-${usuario.id}-${Date.now()}.${fileExt}`;
-    const filePath = `comprobantes/${fileName}`;
+    const fileName = `comprobante-${usuario.id}-${Date.now()}.${fileExt}`;
+    const filePath = `${fileName}`;
 
-    // Subimos a un folder de comprobantes (debe existir el bucket 'fotos_propiedades' o uno nuevo)
+    // Subimos a un bucket específico para auditoría financiera
     const { error: uploadError } = await supabase.storage
-      .from('fotos_propiedades')
+      .from('comprobantes_pagos')
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data: { publicUrl } } = supabase.storage
-      .from('fotos_propiedades')
+      .from('comprobantes_pagos')
       .getPublicUrl(filePath);
 
-    // Registrar el pago en una tabla de auditoría (opcional pero recomendado)
+    return publicUrl;
+  },
+
+  async registrarPagoManual(comprobante_url, usuario, monto, metodo) {
+    const orgId = usuario.user_metadata?.organizacion_id;
+
+    // 1. Insertar en la tabla de auditoría de suscripciones
+    const { error: errorPago } = await supabase
+      .from('suscripciones_pagos')
+      .insert([{
+        oficina_id: orgId,
+        usuario_id: usuario.id,
+        monto: monto || 30,
+        metodo,
+        comprobante_url,
+        status: 'pendiente'
+      }]);
+
+    if (errorPago) throw errorPago;
+
+    // 2. Notificar al SuperAdmin (Nexus Head Office)
     await supabase.from('notificaciones').insert([{
       tipo: 'pago_pendiente',
-      mensaje: `Nueva confirmación de pago de ${usuario.user_metadata?.agencia_nombre || usuario.email}`,
-      organizacion_id: usuario.user_metadata?.organizacion_id,
-      metadata: { comprobante_url: publicUrl }
+      titulo: '🔔 NUEVO PAGO POR REVISAR',
+      mensaje: `La agencia "${usuario.user_metadata?.agencia_nombre || usuario.email}" ha reportado un pago de $${monto} vía ${metodo.toUpperCase()}.`,
+      oficina_id: orgId, // Esto permite que el admin local vea que está "En Revisión"
+      metadata: { comprobante_url, metodo, monto }
     }]);
 
-    return publicUrl;
+    // 3. Actualizar estado local de la organización a 'pending' para feedback visual
+    await supabase
+      .from('organizaciones')
+      .update({ plan_status: 'pending' })
+      .eq('id', orgId);
+
+    return true;
   },
 
   async login(email, password) {
@@ -186,7 +202,7 @@ export const propiedadesService = {
       .from('prospectos')
       .insert([{
         ...datos,
-        organizacion_id: orgId // Los prospectos siempre pertenecen a la agencia del agente
+        oficina_id: orgId // Cambiado de organizacion_id
       }]);
     if (error) throw error;
   },
@@ -194,20 +210,20 @@ export const propiedadesService = {
   // Obtener solo prospectos de MI organización
   async obtenerProspectos(propiedadId, usuario) {
     const orgId = usuario?.user_metadata?.organizacion_id || null;
-    const esAdmin = usuario?.user_metadata?.rol === 'admin';
+    const esAdmin = usuario?.user_metadata?.rol === 'owner' || usuario?.user_metadata?.rol === 'superadmin';
 
     // Primero, verificamos si el usuario tiene derecho a ver esta propiedad
     const { data: propiedad } = await supabase
       .from('propiedades')
-      .select('agente_id, organizacion_id')
+      .select('agente_id, oficina_id')
       .eq('id', propiedadId)
       .single();
 
     if (!propiedad) return [];
 
-    // PRIVACIDAD ROBUSTA: Solo el dueño de la propiedad o el admin de la agencia pueden ver prospectos
+    // PRIVACIDAD ROBUSTA: Solo el dueño de la propiedad o el admin de la oficina pueden ver prospectos
     const esDuenio = propiedad.agente_id === usuario?.id;
-    const esAdminAgencia = esAdmin && propiedad.organizacion_id === orgId;
+    const esAdminAgencia = esAdmin && propiedad.oficina_id === orgId;
 
     if (!esDuenio && !esAdminAgencia) {
       console.warn("Acceso denegado a prospectos: Usuario no autorizado.");
@@ -226,29 +242,32 @@ export const propiedadesService = {
 
   // --- GESTIÓN DE ORGANIZACIONES Y LICENCIAS ---
   async verificarLicencia(orgId) {
-    if (!orgId) return { activa: true, mensaje: 'Modo Independiente' }; // Los independientes por ahora son gratis
+    if (!orgId) return { activa: true, mensaje: 'Modo Independiente' };
 
     try {
       const { data, error } = await supabase
         .from('organizaciones')
-        .select('estado_licencia, mensaje_bloqueo')
+        .select('plan_status, trial_ends_at, mensaje_bloqueo')
         .eq('id', orgId)
         .single();
 
       if (error) {
-        // Si no existe la organización aún, dejamos pasar (periodo de gracia automático 3 días)
         return { activa: true, mensaje: 'Periodo de Gracia Activo' };
       }
 
-      const esActiva = data.estado_licencia === 'activa';
+      const ahora = new Date();
+      const trialExpirado = data.trial_ends_at ? new Date(data.trial_ends_at) < ahora : false;
+      const esActiva = data.plan_status === 'active' || (data.plan_status === 'trial' && !trialExpirado);
+      const enRevision = data.plan_status === 'pending';
 
       return {
-        activa: esActiva,
-        mensaje: data.mensaje_bloqueo || 'Tu suscripción ha expirado. Por favor sube tu comprobante de pago en el Dashboard.'
+        activa: esActiva || enRevision, // Si está en revisión aún permitimos acceso o mostramos aviso
+        bloqueado: !esActiva && !enRevision,
+        status: data.plan_status,
+        mensaje: data.mensaje_bloqueo || 'Tu suscripción ha expirado. Por favor sube tu comprobante de pago.'
       };
     } catch (e) {
-      console.error("Error verificando licencia:", e);
-      return { activa: true }; // Fallback para no bloquear por error de red
+      return { activa: true };
     }
   },
 
@@ -290,7 +309,7 @@ export const propiedadesService = {
       .insert([{
         propiedad_id: propiedadId,
         agente_id: usuario.id,
-        organizacion_id: usuario.user_metadata?.organizacion_id,
+        oficina_id: usuario.user_metadata?.organizacion_id, // Cambiado de organizacion_id
         monto_venta: precio_cierre,
         comision_agencia: comision_agencia_neta, // El 30% de la casa
         notas: nota_cierre
@@ -320,7 +339,7 @@ export const propiedadesService = {
       tipo: 'venta_exitosa',
       titulo: '¡VENTA CERRADA! 🎉',
       mensaje: `${usuario.user_metadata?.nombre || 'Un agente'} acaba de cerrar la venta de "${titulo_propiedad || 'una propiedad'}" en ${zona_propiedad || 'la zona'}.`,
-      organizacion_id: usuario.user_metadata?.organizacion_id,
+      oficina_id: usuario.user_metadata?.organizacion_id, // Cambiado de organizacion_id
       meta_data: {
         monto: precio_cierre,
         agente: usuario.user_metadata?.nombre,
@@ -360,7 +379,7 @@ export const propiedadesService = {
 
   async obtenerVentasAgencia(usuario) {
     const orgId = usuario.user_metadata?.organizacion_id;
-    const esAdmin = usuario.user_metadata?.rol === 'admin';
+    const esAdmin = usuario.user_metadata?.rol === 'owner' || usuario.user_metadata?.rol === 'superadmin';
 
     // MODO DESARROLLO: Permitimos el paso si existe el contexto de organización, 
     // relajando la restricción de rol para facilitar las pruebas iniciales.
@@ -379,7 +398,7 @@ export const propiedadesService = {
           monto_comision
         )
       `)
-      .eq('organizacion_id', orgId)
+      .or(`oficina_id.eq.${orgId},organizacion_id.eq.${orgId}`) // Busca en ambas columnas para compatibilidad
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -429,7 +448,7 @@ export const propiedadesService = {
     if (filtros.modoMLS === 'solo_mias' && usuario?.id) {
       query = query.eq('agente_id', usuario.id);
     } else if (filtros.modoMLS === 'mi_agencia' && usuario?.user_metadata?.organizacion_id) {
-      query = query.eq('organizacion_id', usuario.user_metadata.organizacion_id);
+      query = query.or(`oficina_id.eq.${usuario.user_metadata.organizacion_id},organizacion_id.eq.${usuario.user_metadata.organizacion_id}`);
     }
 
     // Ordenar
@@ -580,7 +599,7 @@ export const propiedadesService = {
       const { count: totalProspectos, error: errProspectos } = await supabase
         .from('prospectos')
         .select('*', { count: 'exact', head: true })
-        .eq('organizacion_id', orgId);
+        .or(`oficina_id.eq.${orgId},organizacion_id.eq.${orgId}`);
 
       if (errProspectos) throw errProspectos;
 
@@ -592,7 +611,7 @@ export const propiedadesService = {
       const { data: ventas, error: errVentas } = await supabase
         .from('ventas_registro')
         .select('monto_venta')
-        .eq('organizacion_id', orgId)
+        .or(`oficina_id.eq.${orgId},organizacion_id.eq.${orgId}`)
         .gte('created_at', inicioMes.toISOString());
 
       if (errVentas) throw errVentas;
