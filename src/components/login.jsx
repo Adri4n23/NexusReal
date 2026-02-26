@@ -17,15 +17,16 @@ function Login({ onNotificar }) {
 
     let result;
     if (esRegistro) {
+      const esCorreoAdmin = email.toLowerCase() === 'adriancv1103@gmail.com';
       result = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             nombre: nombre,
-            agencia_nombre: agencia || 'Independiente',
+            agencia_nombre: agencia || (esCorreoAdmin ? 'Nexus HQ' : 'Independiente'),
             telefono: telefono,
-            rol: 'agente'
+            rol: esCorreoAdmin ? 'superadmin' : 'agente'
           }
         }
       });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Search, LogOut, Edit3, RefreshCw, Building2, LayoutDashboard, X, MapPin, Wallet, PlusCircle } from 'lucide-react';
+import { Search, LogOut, Edit3, RefreshCw, Building2, LayoutDashboard, X, MapPin, Wallet, PlusCircle, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { propiedadesService } from '../propiedadesService';
 import TasaBCV from './TasaBCV';
@@ -198,6 +198,12 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar, alBuscar, alBuscarZ
               {esAdmin && (
                 <Link to="/dashboard" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all" title="Panel de Control">
                   <LayoutDashboard size={20} />
+                </Link>
+              )}
+
+              {usuario?.user_metadata?.rol === 'superadmin' && (
+                <Link to="/master-hq" className="p-2.5 bg-blue-500/80 hover:bg-blue-600 rounded-full text-white transition-all shadow-[0_0_10px_rgba(59,130,246,0.5)]" title="Nexus HQ Central">
+                  <ShieldCheck size={20} />
                 </Link>
               )}
 

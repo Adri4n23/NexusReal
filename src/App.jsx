@@ -8,6 +8,7 @@ import { Notificacion } from './components/Notificacion.jsx';
 import Inicio from './components/Inicio.jsx';
 import DetallePropiedad from './components/DetallePropiedad.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
+import SuperAdmin from './components/SuperAdmin.jsx';
 import { MiBolsillo } from './components/MiBolsillo.jsx';
 import { ShieldAlert, Loader2, Lock, FileText } from 'lucide-react';
 import { Facturacion } from './components/Facturacion.jsx';
@@ -150,6 +151,7 @@ function App() {
             <Route path="/" element={<Inicio session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} setTasaBCV={setTasaBCV} licencia={licencia} />} />
             <Route path="/propiedad/:id" element={<DetallePropiedad session={session} onNotificar={mostrarNotificacion} tasaBCV={tasaBCV} />} />
             <Route path="/dashboard" element={<AdminDashboard session={session} onNotificar={mostrarNotificacion} licencia={licencia} />} />
+            <Route path="/master-hq" element={<SuperAdmin session={session} onNotificar={mostrarNotificacion} />} />
             <Route path="/bolsillo" element={
               <div className="pt-32 pb-20 px-6 max-w-xl mx-auto">
                 <MiBolsillo session={session} onNotificar={mostrarNotificacion} />

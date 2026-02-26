@@ -1,0 +1,136 @@
+================================================================================
+NEXUSREAL: CÓDIGO MAESTRO (SaaS B2B Edition)
+Versión: 1.0 (PRO)
+Autor: Antigravity (Advanced Agentic AI) para Adrian
+Fecha: 2026-02-26
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DATABASE SCHEMA & INFRASTRUCTURE (SQL)
+--------------------------------------------------------------------------------
+
+-- setup_saas_rbac.sql (Roles y Permisos)
+ALTER TABLE propiedades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospectos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ventas_registro ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suscripciones_pagos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizaciones ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de Propiedades (Dueños vs Agentes)
+CREATE POLICY "Nexus_Propiedades_Write" ON propiedades
+FOR ALL TO authenticated
+USING (
+    (auth.jwt() -> 'user_metadata' ->> 'rol' = 'superadmin')
+    OR (auth.jwt() -> 'user_metadata' ->> 'rol' = 'owner' AND oficina_id = (auth.jwt() -> 'user_metadata' ->> 'organizacion_id')::uuid)
+    OR (auth.jwt() -> 'user_metadata' ->> 'rol' = 'agent' AND agente_id = auth.uid())
+);
+
+-- setup_saas_billing.sql (Suscripciones)
+CREATE TABLE IF NOT EXISTS suscripciones_pagos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    oficina_id UUID REFERENCES organizaciones(id) ON DELETE CASCADE,
+    usuario_id UUID NOT NULL,
+    monto DECIMAL(10,2) NOT NULL DEFAULT 30.00,
+    metodo TEXT NOT NULL, -- 'zelle', 'pago_movil'
+    comprobante_url TEXT,
+    status TEXT DEFAULT 'pendiente',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+--------------------------------------------------------------------------------
+2. SUPABASE CONNECTION (src/supabase.js)
+--------------------------------------------------------------------------------
+import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY
+export const supabase = createClient(supabaseUrl, supabaseKey)
+
+--------------------------------------------------------------------------------
+3. CORE LOGIC (src/propiedadesService.js)
+--------------------------------------------------------------------------------
+/* 
+Este es el motor de NexusReal. Maneja:
+- Automatización de Regla 30/70.
+- Sincronización de Tasa BCV.
+- Auditoría de suscripciones.
+- Gestión de Pool de Agentes.
+*/
+
+import { supabase } from './supabase';
+
+export const propiedadesService = {
+  // Regla Contable 30/70
+  async cerrarVenta(propiedadId, datosCierre, usuario) {
+    const { precio_cierre, agentes_comision } = datosCierre;
+    const monto_venta = Number(precio_cierre);
+    const comision_total = Number((monto_venta * 0.05).toFixed(2));
+    const comision_agencia_neta = Number((comision_total * 0.30).toFixed(2)); // La "Casa" se queda el 30%
+    const monto_repartible_agentes = Number((comision_total - comision_agencia_neta).toFixed(2)); // Los agentes se reparten el 70%
+    
+    // ... Lógica de inserción en DB ...
+  },
+
+  // Gestión de Tasa en Tiempo Real
+  async obtenerTasa() {
+    // Sincronización inteligente con BCV / DolarToday
+  },
+
+  // Auditoría SaaS
+  async registrarPagoManual(comprobante_url, usuario, monto, metodo) {
+    const orgId = usuario.user_metadata?.organizacion_id;
+    await supabase.from('suscripciones_pagos').insert([{
+        oficina_id: orgId,
+        usuario_id: usuario.id,
+        monto: monto || 30, // Tarifa 1.0 Master
+        metodo,
+        comprobante_url,
+        status: 'pendiente'
+    }]);
+  }
+};
+
+--------------------------------------------------------------------------------
+4. APP ROOT & SECURITY (src/App.jsx)
+--------------------------------------------------------------------------------
+function App() {
+  const [session, setSession] = useState(null);
+  const [licencia, setLicencia] = useState({ activa: true, bloqueado: false });
+
+  // Validar Acceso SaaS: Si la licencia está bloqueada, forzar pantalla de pago
+  if (session && licencia.bloqueado) {
+    return <Facturacion session={session} />;
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Inicio licencia={licencia} />} />
+        <Route path="/dashboard" element={<AdminDashboard licencia={licencia} />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+--------------------------------------------------------------------------------
+5. B2B LANDING PAGE (src/components/LandingPage.jsx)
+--------------------------------------------------------------------------------
+/*
+Diseño Profesional B2B
+- Hero con Grid de Ingeniería.
+- Enfoque en Dueños de Agencia.
+- Sin inventario público (Privacidad Corporativa).
+*/
+
+--------------------------------------------------------------------------------
+6. DASHBOARD ADMINISTRATIVO (src/components/AdminDashboard.jsx)
+--------------------------------------------------------------------------------
+/*
+Control Financiero:
+- Gráficos de Tendencia (Recharts).
+- Reportes PDF con marca de agua (jsPDF).
+- Gestión de Agentes del Pool.
+*/
+
+================================================================================
+FIN DEL CÓDIGO MAESTRO - NEXUSREAL 2024
+================================================================================

@@ -339,13 +339,45 @@ export const propiedadesService = {
       tipo: 'venta_exitosa',
       titulo: '¡VENTA CERRADA! 🎉',
       mensaje: `${usuario.user_metadata?.nombre || 'Un agente'} acaba de cerrar la venta de "${titulo_propiedad || 'una propiedad'}" en ${zona_propiedad || 'la zona'}.`,
-      oficina_id: usuario.user_metadata?.organizacion_id, // Cambiado de organizacion_id
+      oficina_id: usuario.user_metadata?.organizacion_id,
       meta_data: {
         monto: precio_cierre,
         agente: usuario.user_metadata?.nombre,
         agentes_comision: agentes_comision.map(a => ({ id: a.id, nombre: a.nombre, comision: a.comision_porcentaje }))
       }
     }]);
+
+    // --- NEXUS HQ MONITOR: Notificar a la central del éxito ---
+    try {
+      await this.notifySaleSuccess(
+        usuario.user_metadata?.agencia_nombre || "Agencia Independiente",
+        precio_cierre,
+        { agencia: comision_agencia_neta }
+      );
+    } catch (e) {
+      console.warn("HQ Monitor offline, pero la venta se registró correctamente.");
+    }
+  },
+
+  // --- NEXUS GLOBAL SALES MONITOR ---
+  async notifySaleSuccess(agencyName, totalAmount, commission) {
+    const message = `🚀 ¡VENTA CERRADA EN NEXUS! 
+    Agencia: ${agencyName}
+    Monto: $${totalAmount}
+    Comisión Agencia (30%): $${commission.agencia}
+    Status: Sistema Operativo Impecable.`;
+
+    console.log("%c NEXUS_HQ_MONITOR ", "background: #00429d; color: white; font-weight: bold; padding: 2px 5px; border-radius: 3px;", message);
+
+    try {
+      await supabase.from('global_metrics').insert([{
+        event: 'SALE_CLOSED',
+        agency: agencyName,
+        value: totalAmount
+      }]);
+    } catch (error) {
+      // Silencioso para no romper la UX del agente
+    }
   },
 
   subscribirseANotificaciones(callback) {
@@ -462,31 +494,27 @@ export const propiedadesService = {
   // --- GESTIÓN DE TASA (SIMPLIFICADA) ---
   async obtenerTasa() {
     try {
-      // 1. Intentamos obtener la tasa guardada en Base de Datos
+      // 1. Intentamos obtener la tasa más reciente registrada por el scraper (o manual)
       const { data, error } = await supabase
-        .from('configuracion')
-        .select('valor, updated_at')
-        .eq('clave', 'tasa_bcv')
+        .from('historial_tasas')
+        .select('valor, created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       const ahora = new Date();
-      const ultimaActualizacion = data?.updated_at ? new Date(data.updated_at) : null;
+      const ultimaActualizacion = data?.created_at ? new Date(data.created_at) : null;
 
-      // 2. Si no hay datos, o si la tasa tiene más de 6 horas, intentamos sincronizar con BCV
-      const esAntigua = !ultimaActualizacion || (ahora - ultimaActualizacion) > (6 * 60 * 60 * 1000);
-
-      if (!data || esAntigua) {
-        console.log("Tasa ausente o antigua. Sincronizando con BCV...");
+      if (!data) {
+        console.log("Tasa ausente en historial. Intentando recuperación inicial...");
         const tasaOficial = await this.obtenerTasaOficial();
-
         if (tasaOficial) {
           await this.guardarTasaManual(tasaOficial);
-          localStorage.setItem('tasa_bcv_cache', tasaOficial.toString());
           return tasaOficial;
         }
       }
 
-      // 3. Si tenemos data fresca o el scraping falló, devolvemos lo que hay en DB/Cache
+      // 3. Devolvemos el valor más reciente del historial
       if (data?.valor) {
         return parseFloat(data.valor);
       }
@@ -501,14 +529,13 @@ export const propiedadesService = {
 
   subscribirseATasa(callback) {
     return supabase
-      .channel('tasa-cambio-realtime')
+      .channel('tasa-cambio-historial')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
-          table: 'configuracion',
-          filter: 'clave=eq.tasa_bcv'
+          table: 'historial_tasas'
         },
         (payload) => {
           if (payload.new && payload.new.valor) {
@@ -521,17 +548,17 @@ export const propiedadesService = {
 
   async guardarTasaManual(valor) {
     try {
+      // Guardamos en el historial (fuente de verdad para el resto de la app)
       const { error } = await supabase
-        .from('configuracion')
-        .upsert({
-          clave: 'tasa_bcv',
-          valor: valor.toString(),
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'clave'
-        });
+        .from('historial_tasas')
+        .insert([{
+          valor: parseFloat(valor),
+          created_at: new Date().toISOString()
+        }]);
 
       if (error) throw error;
+
+      // Actualizamos el caché local para respuesta inmediata
       localStorage.setItem('tasa_bcv_cache', valor.toString());
       return true;
     } catch (error) {
@@ -899,6 +926,89 @@ export const propiedadesService = {
       .eq('agente_id', agentId)
       .order('created_at', { ascending: false });
 
+    if (error) throw error;
+    return data;
+  },
+
+  // --- MÉTODOS DE SUPERADMIN (CONTROL GLOBAL) ---
+
+  async adminObtenerOrganizaciones() {
+    const { data, error } = await supabase
+      .from('organizaciones')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async adminObtenerPagosPendientes() {
+    const { data, error } = await supabase
+      .from('suscripciones_pagos')
+      .select(`
+        *,
+        organizaciones(nombre, agencia_nombre)
+      `)
+      .eq('status', 'pendiente')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async adminAprobarPago(pagoId, oficinaId) {
+    // 1. Aprobar el registro de pago
+    const { error: errorPago } = await supabase
+      .from('suscripciones_pagos')
+      .update({ status: 'aprobado' })
+      .eq('id', pagoId);
+
+    if (errorPago) throw errorPago;
+
+    // 2. Activar la licencia de la oficina
+    const { error: errorOrg } = await supabase
+      .from('organizaciones')
+      .update({
+        plan_status: 'active',
+        trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Añadir 30 días
+      })
+      .eq('id', oficinaId);
+
+    if (errorOrg) throw errorOrg;
+
+    // 3. Notificar a la agencia
+    await supabase.from('notificaciones').insert([{
+      tipo: 'pago_aprobado',
+      titulo: '¡Suscripción Activada! 🚀',
+      mensaje: 'Tu pago ha sido verificado. Ahora tienes acceso total a las funciones Pro.',
+      oficina_id: oficinaId
+    }]);
+
+    return true;
+  },
+
+  async adminRechazarPago(pagoId, oficinaId, motivo) {
+    const { error: errorPago } = await supabase
+      .from('suscripciones_pagos')
+      .update({ status: 'rechazado', metadata: { motivo } })
+      .eq('id', pagoId);
+
+    if (errorPago) throw errorPago;
+
+    await supabase.from('notificaciones').insert([{
+      tipo: 'pago_rechazado',
+      titulo: 'Pago no verificado ❌',
+      mensaje: `Tu comprobante ha sido rechazado: ${motivo}. Por favor intenta de nuevo.`,
+      oficina_id: oficinaId
+    }]);
+
+    return true;
+  },
+
+  async adminObtenerMetricasGlobales() {
+    const { data, error } = await supabase
+      .from('global_metrics')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
     if (error) throw error;
     return data;
   }
