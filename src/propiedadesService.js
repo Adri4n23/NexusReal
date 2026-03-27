@@ -127,6 +127,47 @@ export const propiedadesService = {
     return publicUrl;
   },
 
+  /**
+   * Guarda un nuevo contrato en la base de datos.
+   * @param {object} datosContrato - El objeto con los datos del contrato a guardar.
+   * @returns {Promise<object>} El contrato recién creado.
+   * @throws {Error} Si ocurre un error durante la inserción.
+   */
+  async guardarContrato(datosContrato) {
+    const { data, error } = await supabase
+      .from('contratos')
+      .insert([datosContrato])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error al guardar el contrato:', error);
+      throw new Error('No se pudo guardar el contrato en la base de datos.');
+    }
+
+    return data;
+  },
+
+  /**
+   * Invoca la Edge Function para procesar el texto de un contrato usando IA.
+   * @param {string} contractText - El texto completo del contrato.
+   * @param {number|string} propiedadId - El ID de la propiedad asociada.
+   * @returns {Promise<object>} Los datos estructurados extraídos por la IA.
+   * @throws {Error} Si la Edge Function falla o devuelve un error.
+   */
+  async procesarContratoConIA(contractText, propiedadId) {
+    const { data, error } = await supabase.functions.invoke('process-contract', {
+      body: { contractText, propiedad_id: propiedadId },
+    });
+
+    if (error) {
+      console.error('Error al invocar la Edge Function:', error);
+      throw new Error('El servicio de IA no está disponible en este momento.');
+    }
+
+    return data;
+  },
+
   async subirGaleria(files) {
     const urls = [];
     for (const file of files) {
@@ -207,29 +248,14 @@ export const propiedadesService = {
     if (error) throw error;
   },
 
-  // Obtener solo prospectos de MI organización
-  async obtenerProspectos(propiedadId, usuario) {
-    const orgId = usuario?.user_metadata?.organizacion_id || null;
-    const esAdmin = usuario?.user_metadata?.rol === 'owner' || usuario?.user_metadata?.rol === 'superadmin';
-
-    // Primero, verificamos si el usuario tiene derecho a ver esta propiedad
-    const { data: propiedad } = await supabase
-      .from('propiedades')
-      .select('agente_id, oficina_id')
-      .eq('id', propiedadId)
-      .single();
-
-    if (!propiedad) return [];
-
-    // PRIVACIDAD ROBUSTA: Solo el dueño de la propiedad o el admin de la oficina pueden ver prospectos
-    const esDuenio = propiedad.agente_id === usuario?.id;
-    const esAdminAgencia = esAdmin && propiedad.oficina_id === orgId;
-
-    if (!esDuenio && !esAdminAgencia) {
-      console.warn("Acceso denegado a prospectos: Usuario no autorizado.");
-      return [];
-    }
-
+  /**
+   * Obtiene los prospectos vinculados a una propiedad específica.
+   * La seguridad de aislamiento entre agencias es manejada automáticamente por RLS.
+   * 
+   * @param {string|number} propiedadId - ID de la propiedad.
+   * @returns {Promise<Array>} Lista de prospectos autorizados para el usuario.
+   */
+  async obtenerProspectos(propiedadId) {
     const { data, error } = await supabase
       .from('prospectos')
       .select('*')
@@ -237,7 +263,7 @@ export const propiedadesService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return data || [];
   },
 
   // --- GESTIÓN DE ORGANIZACIONES Y LICENCIAS ---
@@ -309,7 +335,7 @@ export const propiedadesService = {
       .insert([{
         propiedad_id: propiedadId,
         agente_id: usuario.id,
-        oficina_id: usuario.user_metadata?.organizacion_id, // Cambiado de organizacion_id
+        oficina_id: usuario.user_metadata?.organizacion_id, 
         monto_venta: precio_cierre,
         comision_agencia: comision_agencia_neta, // El 30% de la casa
         notas: nota_cierre
@@ -954,35 +980,34 @@ export const propiedadesService = {
     return data;
   },
 
-  async adminAprobarPago(pagoId, oficinaId) {
-    // 1. Aprobar el registro de pago
-    const { error: errorPago } = await supabase
-      .from('suscripciones_pagos')
-      .update({ status: 'aprobado' })
-      .eq('id', pagoId);
+  /**
+   * Aprueba el pago de una agencia y activa su licencia. (SERVER-SIDE BLINDADO)
+   * 
+   * @param {string} pagoId - ID del registro de pago de organización.
+   * @param {string} oficinaId - UUID de la organización.
+   * @param {string} pin_seguridad - PIN maestro de 2FA.
+   * @returns {Promise<boolean>}
+   */
+  async adminAprobarPago(pagoId, oficinaId, pin_seguridad) {
+    try {
+      if (!pin_seguridad) throw new Error("PIN de Seguridad Requerido.");
+      
+      const { data, error } = await supabase.functions.invoke('activate-license', {
+        body: { 
+          id: { pago_id: pagoId, oficina_id: oficinaId }, 
+          type: 'agency',
+          pin_seguridad 
+        }
+      });
 
-    if (errorPago) throw errorPago;
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
 
-    // 2. Activar la licencia de la oficina
-    const { error: errorOrg } = await supabase
-      .from('organizaciones')
-      .update({
-        plan_status: 'active',
-        trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // Añadir 30 días
-      })
-      .eq('id', oficinaId);
-
-    if (errorOrg) throw errorOrg;
-
-    // 3. Notificar a la agencia
-    await supabase.from('notificaciones').insert([{
-      tipo: 'pago_aprobado',
-      titulo: '¡Suscripción Activada! 🚀',
-      mensaje: 'Tu pago ha sido verificado. Ahora tienes acceso total a las funciones Pro.',
-      oficina_id: oficinaId
-    }]);
-
-    return true;
+      return true;
+    } catch (e) {
+      console.error("Fallo crítico en aprobación de agencia:", e.message);
+      throw e;
+    }
   },
 
   async adminRechazarPago(pagoId, oficinaId, motivo) {
@@ -1011,5 +1036,106 @@ export const propiedadesService = {
       .limit(50);
     if (error) throw error;
     return data;
+  },
+
+  // =========================================================================
+  // GESTIÓN DE LICENCIAS INDIVIDUALES PRO (AGENDAS DE VENTAS PRIVADAS)
+  // =========================================================================
+
+  /**
+   * Verifica la suscripción individual del agente actual. Control de acceso duro.
+   * @param {string} user_id - UUID del agente (auth.users).
+   * @returns {Promise<object>} Estado de la suscripción.
+   */
+  async verificar_suscripcion_agente(user_id) {
+    if (!user_id) throw new Error("ID de usuario requerido para validar licencia.");
+    
+    let { data, error } = await supabase
+      .from('suscripciones')
+      .select('*')
+      .eq('user_id', user_id)
+      .single();
+
+    if (error && error.code === 'PGRST116') {
+      // Si no tiene registro, se crea por defecto vencida para forzar validación en la red
+      const nueva_fecha = new Date(Date.now() - 1000).toISOString(); // Ya vencida
+      const { data: nueva_sus, error: errInsert } = await supabase
+        .from('suscripciones')
+        .insert([{
+          user_id,
+          plan: 'Basico',
+          status: 'vencido',
+          fecha_vencimiento: nueva_fecha
+        }])
+        .select()
+        .single();
+      
+      if (errInsert) throw errInsert;
+      return nueva_sus;
+    } else if (error) {
+      throw error;
+    }
+
+    // CronJob pasivo: Si pasó la fecha de vencimiento y sigue "activo", lo regresamos a "vencido" on-the-fly
+    const ahora = new Date();
+    const expiracion = new Date(data.fecha_vencimiento);
+    if (expiracion < ahora && data.status === 'activo') {
+      const { data: actualizado, error: errUpdate } = await supabase
+        .from('suscripciones')
+        .update({ status: 'vencido', plan: 'Basico' })
+        .eq('id', data.id)
+        .select()
+        .single();
+      
+      if (errUpdate) throw errUpdate;
+      return actualizado;
+    }
+
+    return data;
+  },
+
+  /**
+   * Obtiene la lista de agentes y sus suscripciones para el panel del SuperAdmin.
+   * @returns {Promise<Array>} Lista de registros.
+   */
+  async admin_obtener_suscripciones_agentes() {
+    // Nota: Como no podemos hacer JOIN directo a auth.users fácilmente por RLS interno, 
+    // asumimos que en el futuro esto cruzará con una vista "profiles". Por ahora usamos la ID/tabla pura.
+    const { data, error } = await supabase
+      .from('suscripciones')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  /**
+   * Aprueba la membresía y suma 30 días estrictos al agente. (SERVER-SIDE BLINDADO)
+   * @param {string} suscripcion_id 
+   * @param {string} pin_seguridad
+   * @param {object} metadata_pago
+   * @returns {Promise<boolean>}
+   */
+  async admin_aprobar_pago_agente(suscripcion_id, pin_seguridad, metadata_pago = null) {
+    try {
+      if (!pin_seguridad) throw new Error("PIN de Seguridad Requerido.");
+
+      const { data, error } = await supabase.functions.invoke('activate-license', {
+        body: { 
+          id: suscripcion_id, 
+          type: 'individual',
+          pin_seguridad,
+          metadata: metadata_pago || { metodo: 'Gestión Manual SuperAdmin', referencia: 'Manual-Nexus' }
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      return true;
+    } catch (e) {
+      console.error("Fallo crítico en activación individual:", e.message);
+      throw e;
+    }
   }
 };

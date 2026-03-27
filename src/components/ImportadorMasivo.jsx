@@ -87,6 +87,14 @@ export function ImportadorMasivo({ session, onNotificar, onImportSuccess }) {
 
         setProcesando(true);
         try {
+            // OWASP: Verificación Severa de Licencia Pro al momento de actuar
+            const licencia_individual = await propiedadesService.verificar_suscripcion_agente(usuario.id);
+            if (licencia_individual.status !== 'activo') {
+                onNotificar?.("Bloqueado: Tu licencia Pro ha vencido. No puedes importar masivamente.", "error");
+                setProcesando(false);
+                return;
+            }
+
             await propiedadesService.importarDesdeExcel(dataPrevia, usuario);
             onNotificar?.(`¡Éxito! ${dataPrevia.length} propiedades importadas.`, "success");
             setDataPrevia([]);

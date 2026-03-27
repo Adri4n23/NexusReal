@@ -53,6 +53,7 @@ function AdminDashboard({ session, onNotificar, licencia }) {
         prospectosTotales: 0
     });
     const [notificaciones, setNotificaciones] = useState([]);
+    const [licencia_agente, set_licencia_agente] = useState(null);
 
     const usuario = session?.user;
     const orgNombre = usuario?.user_metadata?.agencia_nombre || 'Mi Agencia';
@@ -64,16 +65,18 @@ function AdminDashboard({ session, onNotificar, licencia }) {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [dataVentas, stats, team, itemsNotif] = await Promise.all([
+            const [dataVentas, stats, team, itemsNotif, lic_indv] = await Promise.all([
                 propiedadesService.obtenerVentasAgencia(usuario),
                 propiedadesService.obtenerEstadisticasAgencia(usuario),
                 propiedadesService.obtenerAgentesPorOrganizacion(usuario.user_metadata?.organizacion_id),
-                propiedadesService.obtenerNotificaciones(usuario.user_metadata?.organizacion_id)
+                propiedadesService.obtenerNotificaciones(usuario.user_metadata?.organizacion_id),
+                propiedadesService.verificar_suscripcion_agente(usuario.id).catch(e => ({ status: 'vencido', fecha_vencimiento: new Date().toISOString() }))
             ]);
 
             setVentas(dataVentas || []);
             setAgentes(team || []);
             setNotificaciones(itemsNotif || []);
+            set_licencia_agente(lic_indv);
 
             const totalIngresos = dataVentas.reduce((acc, v) => acc + Number(v.monto_venta || 0), 0);
             const comisionAgencia = dataVentas.reduce((acc, v) => acc + Number(v.comision_agencia || 0), 0);
@@ -108,6 +111,12 @@ function AdminDashboard({ session, onNotificar, licencia }) {
 
         // Filtrar meses sin datos si se prefiere, o mostrar tendencia anual
         return datos;
+    };
+
+    const calcular_dias_restantes = (fecha) => {
+        if (!fecha) return 0;
+        const diff = new Date(fecha).getTime() - new Date().getTime();
+        return Math.ceil(diff / (1000 * 3600 * 24));
     };
 
     const getDatosGraficoTipos = () => {
@@ -223,6 +232,52 @@ function AdminDashboard({ session, onNotificar, licencia }) {
                         </button>
                     </div>
                 </div>
+
+                {/* ALERTA DE VENCIMIENTO INDIVIDUAL */}
+                {licencia_agente && licencia_agente.status === 'activo' && calcular_dias_restantes(licencia_agente.fecha_vencimiento) <= 3 && (
+                    <div className="bg-amber-500 text-white p-6 rounded-[24px] flex flex-col md:flex-row items-center justify-between mb-8 shadow-xl shadow-amber-500/20 border border-amber-400 animate-in fade-in slide-in-from-top-4">
+                        <div className="flex items-center gap-4 mb-4 md:mb-0">
+                            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm shrink-0">
+                                <AlertCircle size={24} className="animate-pulse" />
+                            </div>
+                            <div>
+                                <h4 className="font-black uppercase tracking-widest text-xs mb-1">¡Licencia Pro a punto de Expirar!</h4>
+                                <p className="text-amber-50 text-[11px] font-medium leading-relaxed">
+                                    Tu agenda de ventas privada se bloqueará en <strong>{calcular_dias_restantes(licencia_agente.fecha_vencimiento)} días</strong>. Evita perder acceso al Generador de Contratos y al Importador Masivo.
+                                </p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setView('billing')} 
+                            className="w-full md:w-auto px-6 py-3 bg-white text-amber-600 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-amber-50 transition-all shadow-lg shrink-0"
+                        >
+                            Renovar Licencia
+                        </button>
+                    </div>
+                )}
+                
+                {/* ALERTA VENCIDA */}
+                {licencia_agente && licencia_agente.status === 'vencido' && (
+                    <div className="bg-red-500 text-white p-6 rounded-[24px] flex flex-col md:flex-row items-center justify-between mb-8 shadow-xl shadow-red-500/20 border border-red-400 animate-in fade-in">
+                        <div className="flex items-center gap-4 mb-4 md:mb-0">
+                            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm shrink-0">
+                                <Lock size={24} />
+                            </div>
+                            <div>
+                                <h4 className="font-black uppercase tracking-widest text-xs mb-1">Licencia Pro Expirada</h4>
+                                <p className="text-red-50 text-[11px] font-medium leading-relaxed">
+                                    Las características avanzadas han sido bloqueadas. Renueva tu licencia para recuperar el acceso a tu embudo de ventas privado y al Importador Masivo.
+                                </p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setView('billing')} 
+                            className="w-full md:w-auto px-6 py-3 bg-white text-red-600 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-red-50 transition-all shadow-lg shrink-0"
+                        >
+                            Pagar Mensualidad
+                        </button>
+                    </div>
+                )}
 
                 {view === 'accounting' && (
                     <div className="animate-in fade-in duration-700">

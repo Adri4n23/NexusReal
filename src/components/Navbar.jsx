@@ -167,15 +167,15 @@ function Navbar({ usuario, tasaBCV, setTasaBCV, onNotificar, alBuscar, alBuscarZ
                 <Search size={22} />
               </button>
 
-              <div className="hidden lg:flex items-center gap-2">
-                <TasaBCV tasa={tasaBCV} />
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <TasaBCV tasa={tasaBCV} setTasa={setTasaBCV} onNotificar={onNotificar} />
                 {esAdmin && (
                   <button
                     onClick={() => setMostrarModalTasa(true)}
-                    className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all border border-white/20 group"
+                    className="p-1 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all border border-white/20 group"
                     title="Ajustar Tasa"
                   >
-                    <Edit3 size={14} className="group-hover:scale-110 transition-transform" />
+                    <Edit3 size={12} className="md:size-[14px] group-hover:scale-110 transition-transform" />
                   </button>
                 )}
               </div>

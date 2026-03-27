@@ -23,6 +23,12 @@ const Navbar = ({ onAccederClick }) => (
 );
 
 export default function LandingPage({ onAccederClick }) {
+  const propiedades = [
+    { id: 1, titulo: "Penthouse Sky View", zona: "Altamira, Caracas", precio: 850000, habitaciones: 4, banos: 5, metraje: 420, tipo_operacion: "Venta", imagen_url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80" },
+    { id: 2, titulo: "Villa Moderna Los Canales", zona: "Lechería, Anzoátegui", precio: 1200000, habitaciones: 6, banos: 7, metraje: 850, tipo_operacion: "Lujo", imagen_url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80" },
+    { id: 3, titulo: "Apartamento Minimalista", zona: "Tucacas, Falcón", precio: 180000, habitaciones: 2, banos: 2, metraje: 110, tipo_operacion: "Playa", imagen_url: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80" },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900">
       <Navbar onAccederClick={onAccederClick} />

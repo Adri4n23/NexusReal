@@ -2,11 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, CheckCircle, DollarSign, Ruler, Bath, Bed, X, Star, ArrowRight, Building2, Users } from 'lucide-react';
 import { propiedadesService } from '../propiedadesService';
+import { FavoritosService } from '../services/FavoritosService';
 import BlurUpImage from './BlurUpImage';
 
-function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, tasaBCV }) {
+/**
+ * Tarjeta de Propiedad Premium de NexusReal.
+ * Incluye gestión de favoritos, cierre de ventas y visualización de metadatos.
+ */
+function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, tasaBCV, favoritoInicial = false }) {
   const navigate = useNavigate();
   const [mostrarModalCierre, setMostrarModalCierre] = useState(false);
+  const [isFav, setIsFav] = useState(favoritoInicial);
+  const [cargandoFav, setCargandoFav] = useState(false);
   const [agentesDisponibles, setAgentesDisponibles] = useState([]);
   const [datosCierre, setDatosCierre] = useState({
     precio: propiedad.precio,
@@ -14,11 +21,18 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
     nota_cierre: ""
   });
 
+  // Cálculos de comisión (30/70)
   const comisionTotalCalculada = (Number(datosCierre.precio || 0) * 0.05).toFixed(2);
   const tajoCasa30 = (Number(comisionTotalCalculada) * 0.30).toFixed(2);
   const poolAgentes70 = (Number(comisionTotalCalculada) * 0.70).toFixed(2);
   const totalComisionAgentesAsignada = datosCierre.agentes_comision.reduce((sum, agente) => sum + Number(agente.comision_porcentaje || 0), 0);
 
+  // Sincronizar favorito si cambia desde el padre
+  useEffect(() => {
+    setIsFav(favoritoInicial);
+  }, [favoritoInicial]);
+
+  // Cargar agentes al abrir modal de cierre
   useEffect(() => {
     const cargarAgentes = async () => {
       if (usuarioActual?.user_metadata?.organizacion_id) {
@@ -32,6 +46,9 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
   const fotoActual = propiedad.imagen_url || (propiedad.galeria && propiedad.galeria[0]) || 'https://via.placeholder.com/300';
   const precioUSD = Number(propiedad.precio);
 
+  /**
+   * Ejecuta el cierre definitivo de la venta.
+   */
   const confirmarCierre = async () => {
     if (totalComisionAgentesAsignada !== 100) {
       onNotificar && onNotificar("El reparto entre agentes debe sumar 100%", "error");
@@ -50,6 +67,28 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
       alActualizar && alActualizar();
     } catch (e) {
       onNotificar && onNotificar("Error: " + e.message, "error");
+    }
+  };
+
+  /**
+   * Alterna el estado de favorito con UI optimista.
+   */
+  const handleToggleFavorito = async (e) => {
+    e.stopPropagation();
+    if (!usuarioActual) return;
+    
+    const nuevoEstado = !isFav;
+    setIsFav(nuevoEstado);
+    setCargandoFav(true);
+
+    try {
+      await FavoritosService.toggleFavorito(usuarioActual.id, propiedad.id, isFav);
+      onNotificar && onNotificar(nuevoEstado ? "Añadido a favoritos ✨" : "Eliminado de favoritos 🗑️", "success");
+    } catch (e) {
+      setIsFav(!nuevoEstado); // Revertir
+      onNotificar && onNotificar("Error al actualizar favoritos", "error");
+    } finally {
+      setCargandoFav(false);
     }
   };
 
@@ -159,23 +198,37 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
 
       {/* Cuerpo de la Tarjeta */}
       <div className="relative overflow-hidden rounded-[40px] shadow-2xl flex flex-col h-[500px] bg-white border border-slate-100 transition-all duration-500 group-hover:ring-4 group-hover:ring-blue-400/30 group-hover:shadow-[0_20px_50px_rgba(0,66,157,0.1)]">
-        {/* Parte Superior: Imagen (Más Grande) */}
+        {/* Parte Superior: Imagen */}
         <div className="relative h-1/2 overflow-hidden">
           <BlurUpImage
             src={fotoActual}
             alt={propiedad.titulo}
             className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
           />
+          
+          {/* Botón Favorito (Premium Star) */}
+          <button 
+            onClick={handleToggleFavorito}
+            disabled={cargandoFav}
+            className={`absolute top-6 left-6 z-10 p-3 rounded-full backdrop-blur-md transition-all duration-300 border ${
+              isFav 
+              ? 'bg-yellow-400 text-white border-yellow-300 shadow-lg shadow-yellow-400/30 scale-110' 
+              : 'bg-black/20 text-white/70 border-white/20 hover:bg-white/40 hover:text-white'
+            }`}
+          >
+            <Star size={20} fill={isFav ? "white" : "none"} strokeWidth={2.5} />
+          </button>
+
           <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-all"></div>
 
-          {/* Marca de Agua Premium (Reposicionada y más sutil) */}
+          {/* Marca de Agua Premium */}
           <div className="absolute bottom-6 right-8 pointer-events-none opacity-15">
             <span className="text-white text-2xl font-black tracking-[0.4em] uppercase leading-none drop-shadow-2xl">
               NEXUSREAL
             </span>
           </div>
 
-          {/* Ondas Decorativas (Minimalistas) */}
+          {/* Ondas Decorativas */}
           <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-none">
             <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="relative block w-full h-[15px] fill-[#7da62e] opacity-90">
               <path d="M0,0 C150,90 400,0 600,60 C800,120 1050,30 1200,90 L1200,120 L0,120 Z"></path>
@@ -183,7 +236,7 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
           </div>
         </div>
 
-        {/* Cuerpo de la Tarjeta (Azul Mockup) */}
+        {/* Cuerpo de la Tarjeta */}
         <div className="flex-1 bg-[#00429d] p-6 flex flex-col justify-between items-center text-center">
           <div className="space-y-4">
             <h3 className="text-xl font-black text-white uppercase tracking-tight leading-tight">
@@ -218,7 +271,10 @@ function CardPropiedad({ propiedad, usuarioActual, alActualizar, onNotificar, ta
             </div>
 
             <div className="flex gap-2">
-              <button className="flex-1 bg-green-500 text-white rounded-2xl py-3 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 group/btn">
+              <button 
+                onClick={(e) => { e.stopPropagation(); navigate(`/propiedad/${propiedad.id}`); }}
+                className="flex-1 bg-green-500 text-white rounded-2xl py-3 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 group/btn"
+              >
                 Detalles <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
               {propiedad.agente_id === usuarioActual?.id && propiedad.estado !== 'vendido' && (

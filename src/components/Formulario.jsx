@@ -164,7 +164,9 @@ export const Formulario = ({ usuario, alTerminar, onError }) => {
             <option value="Apartamento">Apartamento</option>
             <option value="Casa">Casa</option>
             <option value="Local">Local Comercial</option>
-            <option value="Finca">Finca / Galpón</option>
+            <option value="Galpón">Galpón (Industrial)</option>
+            <option value="Finca">Finca</option>
+            <option value="Granja">Granja</option>
             <option value="Terreno">Terreno</option>
           </select>
         </div>

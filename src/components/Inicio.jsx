@@ -94,7 +94,7 @@ function Inicio({ session, onNotificar, tasaBCV, setTasaBCV, licencia }) {
             <div className="h-8 w-[1px] bg-slate-200/50 hidden md:block mx-2"></div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {['', 'Apartamento', 'Casa', 'Local', 'Terreno'].map((tipo) => (
+              {['', 'Apartamento', 'Casa', 'Local', 'Galpón', 'Finca', 'Granja', 'Terreno'].map((tipo) => (
                 <button
                   key={tipo}
                   onClick={() => setFiltros(prev => ({ ...prev, tipo }))}

@@ -5,18 +5,16 @@ const SUPABASE_KEY = "sb_publishable_E5tzUn4nyMT3OVDUI0gghA_OfBWmbT_";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function checkTasa() {
-    const { data, error } = await supabase
-        .from('historial_tasas')
-        .select('*')
-        .limit(5);
+async function checkSchema() {
+    console.log("Checking Prospectos...");
+    const { data: pros, error: errPros } = await supabase.from('prospectos').select('*').limit(1);
+    if (errPros) console.error("Error prospectos:", errPros);
+    else console.log("Prospectos keys:", pros.length > 0 ? Object.keys(pros[0]) : "Empty");
 
-    if (error) {
-        console.error("Error:", error);
-    } else {
-        console.log("Datos de la tabla:");
-        console.log(data);
-    }
+    console.log("\nChecking Contratos...");
+    const { data: cont, error: errCont } = await supabase.from('contratos').select('*').limit(1);
+    if (errCont) console.error("Error contratos:", errCont);
+    else console.log("Contratos keys:", cont.length > 0 ? Object.keys(cont[0]) : "Empty");
 }
 
-checkTasa();
+checkSchema();

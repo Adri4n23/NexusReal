@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { propiedadesService } from '../propiedadesService';
 import BlurUpImage from './BlurUpImage';
-import { MessageCircle, MapPin, User, AlertCircle, Loader2, Bed, Bath, Ruler, ArrowLeft, ArrowRight, DollarSign, FileText, Users, CheckCircle, X } from 'lucide-react';
+import { MessageCircle, MapPin, User, AlertCircle, Loader2, Bed, Bath, Ruler, ArrowLeft, ArrowRight, DollarSign, FileText, Users, CheckCircle, X, FileSignature, Sparkles } from 'lucide-react';
+import GeneradorContrato from './GeneradorContrato';
 
 function DetallePropiedad({ session, onNotificar, tasaBCV }) {
   const { id } = useParams();
@@ -22,7 +23,15 @@ function DetallePropiedad({ session, onNotificar, tasaBCV }) {
   });
 
   const [prospectos, setProspectos] = useState([]);
-  const [nuevoProspecto, setNuevoProspecto] = useState({ nombre: '', telefono: '', notas: '' });
+  const [nuevoProspecto, setNuevoProspecto] = useState({ nombre: '', telefono: '', mensaje: '' });
+  const [mostrarGenerador, setMostrarGenerador] = useState(false);
+  const [prospectoSeleccionado, setProspectoSeleccionado] = useState(null);
+
+  // Estados para el flujo de IA
+  const [showModalIA, setShowModalIA] = useState(false);
+  const [textoContrato, setTextoContrato] = useState('');
+  const [datosExtraidos, setDatosExtraidos] = useState(null);
+  const [procesandoIA, setProcesandoIA] = useState(false);
 
   // --- LÓGICA DE ROLES Y PERMISOS ---
   const esPropiedadMia = propiedad?.agente_id === usuario?.id;
@@ -82,6 +91,43 @@ function DetallePropiedad({ session, onNotificar, tasaBCV }) {
     }
   }
 
+  const handleProcessContract = async () => {
+    if (!textoContrato.trim()) {
+      onNotificar('Por favor, pega el texto del contrato.', 'warning');
+      return;
+    }
+    setProcesandoIA(true);
+    try {
+      const data = await propiedadesService.procesarContratoConIA(textoContrato, id);
+      setDatosExtraidos(data);
+    } catch (error) {
+      onNotificar(error.message, 'error');
+    } finally {
+      setProcesandoIA(false);
+    }
+  };
+
+  const handleSaveContract = async () => {
+    setProcesandoIA(true);
+    try {
+      const finalData = {
+        ...datosExtraidos,
+        propiedad_id: id,
+        agente_id: session.user.id,
+        fecha_contrato: new Date().toISOString().split('T')[0], // Fecha actual
+      };
+      await propiedadesService.guardarContrato(finalData);
+      onNotificar('Contrato guardado con éxito.', 'success');
+      setShowModalIA(false);
+      setDatosExtraidos(null);
+      setTextoContrato('');
+    } catch (error) {
+      onNotificar(error.message, 'error');
+    } finally {
+      setProcesandoIA(false);
+    }
+  };
+
   // --- HANDLERS DE EVENTOS ---
   async function handleGuardarProspecto(e) {
     e.preventDefault();
@@ -97,10 +143,11 @@ function DetallePropiedad({ session, onNotificar, tasaBCV }) {
         agente_id: usuario.id
       }, usuario);
       onNotificar("Prospecto registrado con éxito", "success");
-      setNuevoProspecto({ nombre: '', telefono: '', notas: '' });
+      setNuevoProspecto({ nombre: '', telefono: '', mensaje: '', cedula: '', estado_civil: 'SOLTERA' });
       fetchProspectos();
     } catch (error) {
-      onNotificar("Error al guardar prospecto", "error");
+      console.error(error);
+      onNotificar("Error al guardar prospecto. Verifica tu conexión o permisos.", "error");
     }
   }
 
@@ -303,18 +350,45 @@ function DetallePropiedad({ session, onNotificar, tasaBCV }) {
                   <Users size={20} className="text-blue-600" /> Prospectos
                 </h3>
                 <form onSubmit={handleGuardarProspecto} className="space-y-3 mb-6">
-                  <input type="text" placeholder="Nombre" value={nuevoProspecto.nombre} onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, nombre: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm" />
-                  <input type="tel" placeholder="Teléfono" value={nuevoProspecto.telefono} onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, telefono: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm" />
-                  <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700">Registrar</button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input type="text" placeholder="Nombre" value={nuevoProspecto.nombre} onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, nombre: e.target.value })} className="col-span-2 px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm" />
+                    <input type="tel" placeholder="Teléfono" value={nuevoProspecto.telefono} onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, telefono: e.target.value })} className="px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm" />
+                    <input type="text" placeholder="Cédula" value={nuevoProspecto.cedula} onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, cedula: e.target.value })} className="px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm" />
+                  </div>
+                  <select
+                    value={nuevoProspecto.estado_civil}
+                    onChange={(e) => setNuevoProspecto({ ...nuevoProspecto, estado_civil: e.target.value })}
+                    className="w-full px-5 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all text-sm"
+                  >
+                    <option value="SOLTERA">SOLTERO(A)</option>
+                    <option value="CASADA">CASADO(A)</option>
+                    <option value="DIVORCIADA">DIVORCIADO(A)</option>
+                    <option value="VIUDA">VIUDO(A)</option>
+                  </select>
+                  <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-600/20">Registrar Prospecto</button>
                 </form>
                 <div className="space-y-3 max-h-48 overflow-y-auto">
                   {prospectos.map(p => (
                     <div key={p.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
-                      <div>
+                      <div className="flex-1 text-left">
                         <p className="font-bold text-slate-800 text-sm">{p.nombre}</p>
-                        <p className="text-xs text-blue-600 font-bold">{p.telefono}</p>
+                        <p className="text-xs text-blue-600 font-bold mb-1">{p.telefono}</p>
+                        {p.mensaje && <p className="text-[10px] text-slate-500 italic leading-tight">"{p.mensaje}"</p>}
                       </div>
-                      <a href={`https://wa.me/${p.telefono.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-green-500 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-green-600"><MessageCircle size={16} /></a>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all ml-4">
+                        {propiedad.tipo_operacion === 'Alquiler' && (
+                          <button
+                            onClick={() => { setProspectoSeleccionado(p); setMostrarGenerador(true); }}
+                            className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-600/20"
+                            title="Generar Contrato de Alquiler"
+                          >
+                            <FileSignature size={14} />
+                          </button>
+                        )}
+                        <a href={`https://wa.me/${p.telefono.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-green-500 text-white rounded-xl hover:bg-green-600 shadow-lg shadow-green-500/20">
+                          <MessageCircle size={14} />
+                        </a>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -323,6 +397,20 @@ function DetallePropiedad({ session, onNotificar, tasaBCV }) {
           </div>
         </div>
       </div>
+
+      {/* MODAL GENERADOR DE CONTRATO */}
+      {mostrarGenerador && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setMostrarGenerador(false)}></div>
+          <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <GeneradorContrato
+              propiedad={propiedad}
+              prospecto={prospectoSeleccionado}
+              onCerrar={() => setMostrarGenerador(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE CIERRE (SIMPLIFICADO PARA ESPACIO) */}
       {mostrarModalCierre && (

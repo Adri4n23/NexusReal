@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CreditCard, CheckCircle2, ShieldCheck, Zap, AlertCircle, Building2, Smartphone, Landmark } from 'lucide-react';
+import { propiedadesService } from '../propiedadesService';
 
 export function Facturacion({ session, onNotificar }) {
     const [metodo, setMetodo] = useState('pago_movil');

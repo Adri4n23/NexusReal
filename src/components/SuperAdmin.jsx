@@ -24,6 +24,7 @@ export default function SuperAdmin({ session, onNotificar }) {
     const [pagos, setPagos] = useState([]);
     const [organizaciones, setOrganizaciones] = useState([]);
     const [metricas, setMetricas] = useState([]);
+    const [suscripciones_agentes, set_suscripciones_agentes] = useState([]);
     const [stats, setStats] = useState({
         totalRecaudado: 0,
         agenciasActivas: 0,
@@ -37,15 +38,17 @@ export default function SuperAdmin({ session, onNotificar }) {
     const fetchGlobalData = async () => {
         try {
             setLoading(true);
-            const [dataPagos, dataOrgs, dataMetricas] = await Promise.all([
+            const [dataPagos, dataOrgs, dataMetricas, dataSus] = await Promise.all([
                 propiedadesService.adminObtenerPagosPendientes(),
                 propiedadesService.adminObtenerOrganizaciones(),
-                propiedadesService.adminObtenerMetricasGlobales()
+                propiedadesService.adminObtenerMetricasGlobales(),
+                propiedadesService.admin_obtener_suscripciones_agentes()
             ]);
 
             setPagos(dataPagos || []);
             setOrganizaciones(dataOrgs || []);
             setMetricas(dataMetricas || []);
+            set_suscripciones_agentes(dataSus || []);
 
             // Calcular Estadísticas
             const activas = dataOrgs.filter(o => o.plan_status === 'active').length;
@@ -67,13 +70,14 @@ export default function SuperAdmin({ session, onNotificar }) {
     };
 
     const aprobarPago = async (pago) => {
-        if (!window.confirm(`¿Aprobar pago de $${pago.monto} para ${pago.organizaciones?.agencia_nombre}?`)) return;
+        const pin = window.prompt(`¿Aprobar pago de $${pago.monto} para ${pago.organizaciones?.agencia_nombre}?\n\nINGRESE PIN DE SEGURIDAD:`);
+        if (!pin) return;
         try {
-            await propiedadesService.adminAprobarPago(pago.id, pago.oficina_id);
+            await propiedadesService.adminAprobarPago(pago.id, pago.oficina_id, pin);
             onNotificar?.("Pago aprobado y licencia activada", "success");
             fetchGlobalData();
         } catch (error) {
-            onNotificar?.("Error al aprobar pago", "error");
+            onNotificar?.(error.message || "Error al aprobar pago", "error");
         }
     };
 
@@ -86,6 +90,18 @@ export default function SuperAdmin({ session, onNotificar }) {
             fetchGlobalData();
         } catch (error) {
             onNotificar?.("Error al rechazar pago", "error");
+        }
+    };
+
+    const aprobar_pago_individual = async (suscripcion_id) => {
+        const pin = window.prompt("¿Aprobar licencia Pro individual (+30 días)?\n\nINGRESE PIN DE SEGURIDAD:");
+        if (!pin) return;
+        try {
+            await propiedadesService.admin_aprobar_pago_agente(suscripcion_id, pin);
+            onNotificar?.("Licencia de agente aprobada", "success");
+            fetchGlobalData();
+        } catch (error) {
+            onNotificar?.(error.message || "Error aprobando suscripción", "error");
         }
     };
 
@@ -112,10 +128,11 @@ export default function SuperAdmin({ session, onNotificar }) {
                         <h1 className="text-5xl font-serif">Nexus <span className="text-blue-500">HQ Control</span></h1>
                     </div>
 
-                    <div className="flex bg-white/5 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10">
-                        <button onClick={() => setTab('pagos')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'pagos' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Pagos ({stats.pagosPendientes})</button>
-                        <button onClick={() => setTab('organizaciones')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'organizaciones' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Agencias</button>
-                        <button onClick={() => setTab('metricas')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'metricas' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Métricas</button>
+                    <div className="flex bg-white/5 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 overflow-x-auto">
+                        <button onClick={() => setTab('pagos')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${tab === 'pagos' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Pagos Agencias ({stats.pagosPendientes})</button>
+                        <button onClick={() => setTab('agentes')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${tab === 'agentes' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Pagos Agentes ({suscripciones_agentes.filter(s => s.status === 'pendiente').length})</button>
+                        <button onClick={() => setTab('organizaciones')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${tab === 'organizaciones' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Agencias</button>
+                        <button onClick={() => setTab('metricas')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${tab === 'metricas' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>Métricas</button>
                     </div>
                 </div>
 
@@ -241,6 +258,55 @@ export default function SuperAdmin({ session, onNotificar }) {
                                 )) : (
                                     <div className="text-center py-20 text-slate-500 italic">No se han registrado cierres globales aún.</div>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === 'agentes' && (
+                        <div className="p-8 animate-in fade-in duration-500">
+                            <h2 className="text-xl font-serif mb-8 flex items-center gap-3">
+                                <Users className="text-blue-500" /> Auditoría de Licencias Pro Individuales
+                            </h2>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="border-b border-white/5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                            <th className="px-6 py-4">ID Agente</th>
+                                            <th className="px-6 py-4 text-center">Plan Actual</th>
+                                            <th className="px-6 py-4 text-center">Estado</th>
+                                            <th className="px-6 py-4 text-center">Vencimiento</th>
+                                            <th className="px-6 py-4 text-right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {suscripciones_agentes.length > 0 ? suscripciones_agentes.map(sus => (
+                                            <tr key={sus.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-6 py-6">
+                                                    <p className="font-mono text-[10px] text-slate-300">{sus.user_id}</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold mt-1">Suscripción: {sus.id.split('-')[0]}</p>
+                                                </td>
+                                                <td className="px-6 py-6 text-center font-black uppercase text-[10px]">{sus.plan}</td>
+                                                <td className="px-6 py-6 text-center">
+                                                    <span className={`px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase ${sus.status === 'activo' ? 'text-green-400' : sus.status === 'pendiente' ? 'text-amber-400' : 'text-red-400'}`}>{sus.status}</span>
+                                                </td>
+                                                <td className="px-6 py-6 text-center text-sm font-mono text-slate-300">
+                                                    {new Date(sus.fecha_vencimiento).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-6 py-6 text-right">
+                                                    {sus.status !== 'activo' ? (
+                                                        <button onClick={() => aprobar_pago_individual(sus.id)} className="px-5 py-2 bg-blue-600 text-white font-black text-[9px] uppercase tracking-widest rounded-lg hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 inline-flex">
+                                                            <CheckCircle2 size={14} /> Aprobar (+30 Días)
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-[10px] uppercase font-black tracking-widest text-slate-600">Al día</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )) : (
+                                            <tr><td colSpan="5" className="px-6 py-20 text-center text-slate-500 italic">No hay licencias de agentes en el sistema.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     )}
